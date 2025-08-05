@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Upload, Link, Music, FileAudio } from 'lucide-react';
 import { useAudioPlayer } from '../audio/AudioPlayerProvider';
 import { useToast } from '@/hooks/use-toast';
-import { URLExtractor } from '@/services/urlExtractor';
+import { StreamingService } from '@/services/streamingService';
 
 export const FileLoader: React.FC = () => {
   const { loadTrack, addToPlaylist } = useAudioPlayer();
@@ -89,26 +89,26 @@ export const FileLoader: React.FC = () => {
     try {
       const url = urlInput.trim();
       
-      // Try to extract from YouTube Music or SoundCloud
-      const extractedTrack = await URLExtractor.extractFromUrl(url);
-      
       let track;
-      if (extractedTrack) {
+      
+      // Check if URL needs special streaming handling
+      if (StreamingService.needsWorkaround(url)) {
+        const streamTrack = await StreamingService.createStreamableTrack(url);
         track = {
-          id: `extracted-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          title: extractedTrack.title,
-          artist: extractedTrack.artist,
-          duration: extractedTrack.duration || 0,
-          src: extractedTrack.streamUrl,
-          artwork: extractedTrack.artwork
+          id: `stream-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          title: streamTrack.title,
+          artist: streamTrack.artist,
+          duration: 0,
+          src: streamTrack.streamUrl,
+          artwork: streamTrack.artwork
         };
         
         toast({
-          title: "Track extracted",
-          description: `Loaded "${extractedTrack.title}" by ${extractedTrack.artist}`,
+          title: "Streaming URL loaded",
+          description: `Note: Some streaming URLs may have limited playback due to platform restrictions.`,
         });
       } else {
-        // Fallback to regular URL handling
+        // Regular audio URL
         track = createTrackFromUrl(url);
         toast({
           title: "URL loaded",
@@ -123,7 +123,7 @@ export const FileLoader: React.FC = () => {
     } catch (error) {
       toast({
         title: "Error loading URL",
-        description: "Failed to load audio from the provided URL.",
+        description: "Failed to load audio from the provided URL. Try a direct audio file URL instead.",
         variant: "destructive"
       });
     }
@@ -205,7 +205,7 @@ export const FileLoader: React.FC = () => {
             <Input
               value={urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
-              placeholder="YouTube Music, SoundCloud, or direct audio URL"
+              placeholder="Direct audio URL (MP3, WAV, etc.) or streaming link"
               className="flex-1 bg-audio-control border-border focus:border-primary"
               onKeyPress={(e) => e.key === 'Enter' && handleUrlLoad()}
             />
@@ -233,10 +233,27 @@ export const FileLoader: React.FC = () => {
           <Button
             variant="outline"
             size="sm"
+            onClick={async () => {
+              const demoTrack = StreamingService.createDemoTrack();
+              const track = {
+                id: `demo-${Date.now()}`,
+                title: demoTrack.title,
+                artist: demoTrack.artist,
+                duration: 0,
+                src: demoTrack.streamUrl,
+                artwork: demoTrack.artwork
+              };
+              await loadTrack(track);
+              addToPlaylist(track);
+              toast({
+                title: "Demo track loaded",
+                description: "Playing a sample audio track.",
+              });
+            }}
             className="bg-audio-control border-border hover:bg-audio-active"
           >
             <Music className="w-4 h-4 mr-2" />
-            Demo Tracks
+            Demo Track
           </Button>
         </div>
       </div>

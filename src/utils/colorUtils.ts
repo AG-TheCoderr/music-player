@@ -2,11 +2,13 @@
 export function getResolvedCSSColor(cssVariable: string): string {
   if (typeof window === 'undefined') return '#8b5cf6'; // Fallback for SSR
   
+  // Handle 'var()' wrapped variables
+  const variableName = cssVariable.includes('var(') 
+    ? cssVariable.replace(/var\(([^)]+)\)/, '$1')
+    : cssVariable;
+  
   const root = document.documentElement;
   const computedStyle = getComputedStyle(root);
-  
-  // Extract the variable name (remove 'var(' and ')')
-  const variableName = cssVariable.replace(/var\(([^)]+)\)/, '$1');
   
   // Get the HSL values from CSS
   const hslValues = computedStyle.getPropertyValue(variableName).trim();
@@ -17,20 +19,21 @@ export function getResolvedCSSColor(cssVariable: string): string {
   
   // Fallback colors based on common variable names
   const fallbacks: Record<string, string> = {
-    '--primary': 'hsl(280, 100%, 70%)',
-    '--primary-glow': 'hsl(280, 100%, 80%)',
-    '--accent': 'hsl(315, 100%, 65%)',
-    '--foreground': 'hsl(280, 15%, 95%)',
+    '--primary': '#a855f7',
+    '--primary-glow': '#c084fc', 
+    '--accent': '#e879f9',
+    '--foreground': '#f3e8ff',
   };
   
-  return fallbacks[variableName] || '#8b5cf6';
+  return fallbacks[variableName] || '#a855f7';
 }
 
-// Create color with alpha for canvas operations
+// Create color with alpha for canvas operations  
 export function createColorWithAlpha(baseColor: string, alpha: number): string {
-  // If it's already an HSL color
+  // Convert to hex if it's HSL
   if (baseColor.startsWith('hsl(')) {
-    return baseColor.replace('hsl(', `hsla(`).replace(')', `, ${alpha})`);
+    // For now, return a simple rgba fallback
+    return `rgba(168, 85, 247, ${alpha})`; // Purple color
   }
   
   // If it's a hex color
@@ -42,5 +45,6 @@ export function createColorWithAlpha(baseColor: string, alpha: number): string {
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   }
   
-  return baseColor;
+  // Default purple with alpha
+  return `rgba(168, 85, 247, ${alpha})`;
 }
