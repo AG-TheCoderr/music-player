@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Upload, Link, Music, FileAudio } from 'lucide-react';
 import { useAudioPlayer } from '../audio/AudioPlayerProvider';
 import { useToast } from '@/hooks/use-toast';
+import { URLExtractor } from '@/services/urlExtractor';
 
 export const FileLoader: React.FC = () => {
   const { loadTrack, addToPlaylist } = useAudioPlayer();
@@ -86,15 +87,39 @@ export const FileLoader: React.FC = () => {
     if (!urlInput.trim()) return;
 
     try {
-      const track = createTrackFromUrl(urlInput.trim());
+      const url = urlInput.trim();
+      
+      // Try to extract from YouTube Music or SoundCloud
+      const extractedTrack = await URLExtractor.extractFromUrl(url);
+      
+      let track;
+      if (extractedTrack) {
+        track = {
+          id: `extracted-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          title: extractedTrack.title,
+          artist: extractedTrack.artist,
+          duration: extractedTrack.duration || 0,
+          src: extractedTrack.streamUrl,
+          artwork: extractedTrack.artwork
+        };
+        
+        toast({
+          title: "Track extracted",
+          description: `Loaded "${extractedTrack.title}" by ${extractedTrack.artist}`,
+        });
+      } else {
+        // Fallback to regular URL handling
+        track = createTrackFromUrl(url);
+        toast({
+          title: "URL loaded",
+          description: "Audio track loaded from URL.",
+        });
+      }
+      
       await loadTrack(track);
       addToPlaylist(track);
       setUrlInput('');
       
-      toast({
-        title: "URL loaded",
-        description: "Audio track loaded from URL.",
-      });
     } catch (error) {
       toast({
         title: "Error loading URL",
@@ -180,7 +205,7 @@ export const FileLoader: React.FC = () => {
             <Input
               value={urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
-              placeholder="https://example.com/audio.mp3"
+              placeholder="YouTube Music, SoundCloud, or direct audio URL"
               className="flex-1 bg-audio-control border-border focus:border-primary"
               onKeyPress={(e) => e.key === 'Enter' && handleUrlLoad()}
             />
