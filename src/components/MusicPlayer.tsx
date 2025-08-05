@@ -1,6 +1,6 @@
 import React from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { AudioPlayerProvider } from './audio/AudioPlayerProvider';
+import { AudioPlayerProvider, useAudioPlayer } from './audio/AudioPlayerProvider';
 import { PlayerControls } from './player/PlayerControls';
 import { Equalizer } from './player/Equalizer';
 import { EffectsPanel } from './player/EffectsPanel';
@@ -11,10 +11,11 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Headphones, Settings, Upload, BarChart3 } from 'lucide-react';
 
-export const MusicPlayer: React.FC = () => {
+const MusicPlayerContent: React.FC = () => {
+  const { equalizerBands } = useAudioPlayer();
+  
   return (
-    <AudioPlayerProvider>
-      <div className="min-h-screen bg-background p-4 space-y-6">
+    <div className="min-h-screen bg-background p-4 space-y-6">
         {/* Header */}
         <div className="text-center space-y-2">
           <div className="flex items-center justify-center space-x-3">
@@ -112,19 +113,23 @@ export const MusicPlayer: React.FC = () => {
                   <Card className="p-4 bg-gradient-surface border-audio-control">
                     <h4 className="text-sm font-semibold text-foreground mb-3">Quick EQ</h4>
                     <div className="flex justify-between items-end h-16">
-                      {[0, 1, 2, 3, 4].map((i) => (
-                        <div key={i} className="flex-1 mx-1">
-                          <div className="bg-audio-track rounded h-full relative overflow-hidden">
-                            <div 
-                              className="bg-gradient-primary w-full absolute bottom-0 transition-all duration-300"
-                              style={{ height: `${30 + Math.random() * 40}%` }}
-                            />
+                      {[0, 2, 4, 6, 8].map((eqIndex, i) => {
+                        const gain = equalizerBands[eqIndex] || 0;
+                        const height = Math.max(5, ((gain + 12) / 24) * 100);
+                        return (
+                          <div key={i} className="flex-1 mx-1">
+                            <div className="bg-audio-track rounded h-full relative overflow-hidden">
+                              <div 
+                                className="bg-gradient-primary w-full absolute bottom-0 transition-all duration-300"
+                                style={{ height: `${height}%` }}
+                              />
+                            </div>
+                            <div className="text-xs text-center text-muted-foreground mt-1">
+                              {['Bass', 'Low', 'Mid', 'High', 'Tre'][i]}
+                            </div>
                           </div>
-                          <div className="text-xs text-center text-muted-foreground mt-1">
-                            {['Bass', 'Low', 'Mid', 'High', 'Tre'][i]}
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </Card>
 
@@ -190,7 +195,14 @@ export const MusicPlayer: React.FC = () => {
             </TabsContent>
           </Tabs>
         </div>
-      </div>
+    </div>
+  );
+};
+
+export const MusicPlayer: React.FC = () => {
+  return (
+    <AudioPlayerProvider>
+      <MusicPlayerContent />
     </AudioPlayerProvider>
   );
 };

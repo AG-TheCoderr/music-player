@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useCallback } from 'react';
 import { useAudioPlayer } from './AudioPlayerProvider';
+import { getResolvedCSSColor, createColorWithAlpha } from '@/utils/colorUtils';
 
 interface VisualizerProps {
   type: 'bars' | 'wave' | 'circular';
@@ -112,11 +113,12 @@ function drawBars(
   const barWidth = width / barCount;
   const step = Math.floor(frequencyData.length / barCount);
 
-  // Create gradient
+  // Resolve color and create gradient
+  const resolvedColor = getResolvedCSSColor(color);
   const gradient = ctx.createLinearGradient(0, height, 0, 0);
-  gradient.addColorStop(0, color + '40');
-  gradient.addColorStop(0.5, color + '80');
-  gradient.addColorStop(1, color);
+  gradient.addColorStop(0, createColorWithAlpha(resolvedColor, 0.25));
+  gradient.addColorStop(0.5, createColorWithAlpha(resolvedColor, 0.5));
+  gradient.addColorStop(1, resolvedColor);
 
   ctx.fillStyle = gradient;
 
@@ -131,7 +133,7 @@ function drawBars(
     ctx.fill();
 
     // Add glow effect
-    ctx.shadowColor = color;
+    ctx.shadowColor = resolvedColor;
     ctx.shadowBlur = 10;
     ctx.fill();
     ctx.shadowBlur = 0;
@@ -148,11 +150,12 @@ function drawWave(
   const sliceWidth = width / timeDomainData.length;
   let x = 0;
 
-  // Create gradient stroke
+  // Resolve color and create gradient stroke
+  const resolvedColor = getResolvedCSSColor(color);
   const gradient = ctx.createLinearGradient(0, 0, width, 0);
-  gradient.addColorStop(0, color + '60');
-  gradient.addColorStop(0.5, color);
-  gradient.addColorStop(1, color + '60');
+  gradient.addColorStop(0, createColorWithAlpha(resolvedColor, 0.4));
+  gradient.addColorStop(0.5, resolvedColor);
+  gradient.addColorStop(1, createColorWithAlpha(resolvedColor, 0.4));
 
   ctx.strokeStyle = gradient;
   ctx.lineWidth = 2;
@@ -177,7 +180,7 @@ function drawWave(
   ctx.stroke();
 
   // Add glow effect
-  ctx.shadowColor = color;
+  ctx.shadowColor = resolvedColor;
   ctx.shadowBlur = 5;
   ctx.stroke();
   ctx.shadowBlur = 0;
@@ -196,11 +199,12 @@ function drawCircular(
   const barCount = 64;
   const step = Math.floor(frequencyData.length / barCount);
 
-  // Create radial gradient
+  // Resolve color and create radial gradient
+  const resolvedColor = getResolvedCSSColor(color);
   const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius * 2);
-  gradient.addColorStop(0, color + '20');
-  gradient.addColorStop(0.7, color + '60');
-  gradient.addColorStop(1, color);
+  gradient.addColorStop(0, createColorWithAlpha(resolvedColor, 0.1));
+  gradient.addColorStop(0.7, createColorWithAlpha(resolvedColor, 0.4));
+  gradient.addColorStop(1, resolvedColor);
 
   ctx.fillStyle = gradient;
 
@@ -224,6 +228,6 @@ function drawCircular(
   // Draw center circle
   ctx.beginPath();
   ctx.arc(centerX, centerY, radius * 0.3, 0, Math.PI * 2);
-  ctx.fillStyle = color + '40';
+  ctx.fillStyle = createColorWithAlpha(resolvedColor, 0.25);
   ctx.fill();
 }

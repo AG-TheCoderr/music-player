@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { AudioEngine, AudioEffects } from './AudioEngine';
+import { MediaSessionService } from '@/services/mediaSession';
 
 interface Track {
   id: string;
@@ -133,6 +134,9 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         duration: duration || prev.duration
       }));
 
+      // Update Media Session position
+      MediaSessionService.updatePosition(currentTime, duration || 0);
+
       // Check if track ended
       if (duration > 0 && currentTime >= duration - 0.1) {
         // Handle repeat/next track
@@ -203,6 +207,26 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         });
       }
 
+      // Setup Media Session
+      MediaSessionService.setupMediaSession(track, {
+        onPlay: play,
+        onPause: pause,
+        onNextTrack: nextTrack,
+        onPreviousTrack: previousTrack,
+        onSeek: (time) => {
+          if (time < 0) {
+            // Relative seek backward
+            seekTo(Math.max(0, state.currentTime + time));
+          } else if (time > state.duration) {
+            // Absolute seek
+            seekTo(time);
+          } else {
+            // Relative seek forward or absolute
+            seekTo(time > state.currentTime + 30 ? time : state.currentTime + time);
+          }
+        }
+      });
+
       setState(prev => ({ ...prev, isLoading: false }));
     } catch (error) {
       console.error('Error loading track:', error);
@@ -214,6 +238,7 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (audioEngineRef.current) {
       audioEngineRef.current.play();
       setState(prev => ({ ...prev, isPlaying: true }));
+      MediaSessionService.updatePlaybackState('playing');
     }
   }, []);
 
@@ -221,6 +246,7 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (audioEngineRef.current) {
       audioEngineRef.current.pause();
       setState(prev => ({ ...prev, isPlaying: false }));
+      MediaSessionService.updatePlaybackState('paused');
     }
   }, []);
 

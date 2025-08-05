@@ -48,22 +48,19 @@ export class URLExtractor {
 
   static async extractYouTubeMusic(url: string): Promise<ExtractedTrack> {
     try {
-      // Simple extraction - in production, you'd want more robust parsing
-      const html = await this.fetchWithCORS(url);
+      // Extract video ID from URL
+      const videoIdMatch = url.match(/(?:v=|\/watch\?v=|youtu\.be\/)([^&\n?#]+)/);
+      if (!videoIdMatch) throw new Error('Invalid YouTube URL');
       
-      // Extract basic info from HTML meta tags
-      const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/);
-      const title = titleMatch ? titleMatch[1].replace(' - YouTube Music', '').replace(' - YouTube', '') : 'Unknown Track';
+      const videoId = videoIdMatch[1];
       
-      // For demo purposes, we'll use the original URL with a CORS proxy
-      // In production, you'd extract the actual stream URL
-      const streamUrl = CORS_PROXIES[0] + encodeURIComponent(url);
-      
+      // Use a simple approach - just return the URL for direct loading
+      // Note: This is a simplified demo. Real implementation would need proper stream extraction
       return {
-        title,
+        title: `YouTube Video ${videoId}`,
         artist: 'YouTube Music',
-        streamUrl,
-        artwork: undefined
+        streamUrl: url, // Use original URL - browser will handle CORS
+        artwork: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`
       };
     } catch (error) {
       throw new Error('Failed to extract YouTube Music track');
@@ -74,23 +71,24 @@ export class URLExtractor {
     try {
       const html = await this.fetchWithCORS(url);
       
-      // Extract title from SoundCloud page
-      const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/);
-      const title = titleMatch ? titleMatch[1].replace(' | Free Listening on SoundCloud', '') : 'Unknown Track';
+      // Extract title from meta tags
+      const titleMatch = html.match(/<meta property="twitter:title" content="([^"]+)"/);
+      const title = titleMatch ? titleMatch[1] : 'Unknown Track';
       
       // Extract artist from meta tags
-      const artistMatch = html.match(/<meta property="twitter:audio:artist_name" content="([^"]+)"/);
+      const artistMatch = html.match(/<meta property="soundcloud:user" content="https:\/\/soundcloud\.com\/([^"]+)"/);
       const artist = artistMatch ? artistMatch[1] : 'SoundCloud';
       
-      // For demo purposes, use CORS proxy with original URL
-      // In production, you'd extract the actual stream URL from the page
-      const streamUrl = CORS_PROXIES[0] + encodeURIComponent(url);
+      // Extract artwork
+      const artworkMatch = html.match(/<meta property="twitter:image" content="([^"]+)"/);
+      const artwork = artworkMatch ? artworkMatch[1] : undefined;
       
+      // Use original URL - let browser handle it
       return {
         title,
         artist,
-        streamUrl,
-        artwork: undefined
+        streamUrl: url,
+        artwork
       };
     } catch (error) {
       throw new Error('Failed to extract SoundCloud track');

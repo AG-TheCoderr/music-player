@@ -8,51 +8,51 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    --background: 220 13% 9%;
-    --foreground: 220 14% 96%;
+    --background: 0 0% 0%;
+    --foreground: 280 15% 95%;
 
-    --card: 220 13% 11%;
-    --card-foreground: 220 14% 96%;
+    --card: 0 0% 2%;
+    --card-foreground: 280 15% 95%;
 
-    --popover: 220 13% 11%;
-    --popover-foreground: 220 14% 96%;
+    --popover: 0 0% 2%;
+    --popover-foreground: 280 15% 95%;
 
-    --primary: 280 100% 65%;
-    --primary-foreground: 220 13% 9%;
-    --primary-glow: 280 100% 75%;
+    --primary: 280 100% 70%;
+    --primary-foreground: 0 0% 0%;
+    --primary-glow: 280 100% 80%;
 
-    --secondary: 220 13% 16%;
-    --secondary-foreground: 220 14% 96%;
+    --secondary: 0 0% 8%;
+    --secondary-foreground: 280 15% 95%;
 
-    --muted: 220 13% 16%;
-    --muted-foreground: 220 14% 65%;
+    --muted: 0 0% 8%;
+    --muted-foreground: 280 10% 60%;
 
-    --accent: 315 100% 60%;
-    --accent-foreground: 220 13% 9%;
+    --accent: 315 100% 65%;
+    --accent-foreground: 0 0% 0%;
 
     --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive-foreground: 280 15% 95%;
 
-    --border: 220 13% 18%;
-    --input: 220 13% 16%;
-    --ring: 280 100% 65%;
+    --border: 0 0% 12%;
+    --input: 0 0% 8%;
+    --ring: 280 100% 70%;
 
     /* Audio Player Theme */
-    --audio-surface: 220 13% 12%;
-    --audio-control: 220 13% 20%;
-    --audio-active: 280 100% 65%;
-    --audio-inactive: 220 14% 45%;
-    --audio-track: 220 13% 16%;
-    --audio-progress: 280 100% 65%;
+    --audio-surface: 0 0% 4%;
+    --audio-control: 0 0% 10%;
+    --audio-active: 280 100% 70%;
+    --audio-inactive: 280 10% 40%;
+    --audio-track: 0 0% 8%;
+    --audio-progress: 280 100% 70%;
     
     /* Gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(280 100% 65%), hsl(315 100% 60%));
-    --gradient-surface: linear-gradient(135deg, hsl(220 13% 11%), hsl(220 13% 13%));
-    --gradient-glow: linear-gradient(135deg, hsl(280 100% 65% / 0.2), hsl(315 100% 60% / 0.2));
+    --gradient-primary: linear-gradient(135deg, hsl(280 100% 70%), hsl(315 100% 65%));
+    --gradient-surface: linear-gradient(135deg, hsl(0 0% 2%), hsl(0 0% 4%));
+    --gradient-glow: linear-gradient(135deg, hsl(280 100% 70% / 0.3), hsl(315 100% 65% / 0.3));
     
     /* Shadows */
-    --shadow-glow: 0 0 40px hsl(280 100% 65% / 0.3);
-    --shadow-card: 0 8px 32px hsl(220 13% 0% / 0.4);
+    --shadow-glow: 0 0 50px hsl(280 100% 70% / 0.4);
+    --shadow-card: 0 8px 32px hsl(0 0% 0% / 0.6);
     
     /* Animations */
     --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
