@@ -7,6 +7,7 @@ import { EffectsPanel } from './player/EffectsPanel';
 import { FileLoader } from './player/FileLoader';
 import { ModeSelector } from './player/ModeSelector';
 import { Visualizer } from './audio/Visualizer';
+import { MusicSearch } from './search/MusicSearch';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Headphones, Settings, Upload, BarChart3 } from 'lucide-react';
@@ -67,6 +68,7 @@ const MusicPlayerContent: React.FC = () => {
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Left Column */}
                 <div className="space-y-6">
+                  <MusicSearch />
                   <FileLoader />
                   <ModeSelector />
                 </div>
@@ -76,7 +78,7 @@ const MusicPlayerContent: React.FC = () => {
                   <PlayerControls />
                   
                   {/* Visualizer */}
-                  <Card className="p-6 bg-gradient-surface border-audio-control">
+                  <Card className="p-6 bg-gradient-surface border-audio-control rainbow-border">
                     <div className="space-y-4">
                       <h3 className="text-lg font-semibold text-foreground">Audio Visualizer</h3>
                       <div className="h-32 bg-audio-track rounded-lg overflow-hidden">
@@ -110,7 +112,7 @@ const MusicPlayerContent: React.FC = () => {
                 {/* Right Column */}
                 <div className="space-y-6">
                   {/* Quick EQ */}
-                  <Card className="p-4 bg-gradient-surface border-audio-control">
+                  <Card className="p-4 bg-gradient-surface border-audio-control rainbow-border">
                     <h4 className="text-sm font-semibold text-foreground mb-3">Quick EQ</h4>
                     <div className="flex justify-between items-end h-16">
                       {[0, 2, 4, 6, 8].map((eqIndex, i) => {
@@ -134,7 +136,7 @@ const MusicPlayerContent: React.FC = () => {
                   </Card>
 
                   {/* Track Info */}
-                  <Card className="p-4 bg-gradient-surface border-audio-control">
+                  <Card className="p-4 bg-gradient-surface border-audio-control rainbow-border">
                     <h4 className="text-sm font-semibold text-foreground mb-3">Track Info</h4>
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
@@ -160,17 +162,21 @@ const MusicPlayerContent: React.FC = () => {
             </TabsContent>
 
             <TabsContent value="equalizer">
-              <Equalizer />
+              <div className="rainbow-border p-6 bg-gradient-surface border-audio-control rounded-lg">
+                <Equalizer />
+              </div>
             </TabsContent>
 
             <TabsContent value="effects">
-              <EffectsPanel />
+              <div className="rainbow-border p-6 bg-gradient-surface border-audio-control rounded-lg">
+                <EffectsPanel />
+              </div>
             </TabsContent>
 
             <TabsContent value="settings" className="space-y-6">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <ModeSelector />
-                <Card className="p-6 bg-gradient-surface border-audio-control">
+                <Card className="p-6 bg-gradient-surface border-audio-control rainbow-border">
                   <h3 className="text-lg font-semibold text-foreground mb-4">Advanced Settings</h3>
                   <div className="space-y-4 text-sm">
                     <div className="flex justify-between items-center">

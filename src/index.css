@@ -57,6 +57,14 @@ All colors MUST be HSL.
     /* Animations */
     --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     --transition-bounce: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    
+    /* Rainbow animation colors */
+    --rainbow-1: 0 100% 60%;     /* Red */
+    --rainbow-2: 60 100% 60%;    /* Yellow */
+    --rainbow-3: 120 100% 60%;   /* Green */
+    --rainbow-4: 180 100% 60%;   /* Cyan */
+    --rainbow-5: 240 100% 60%;   /* Blue */
+    --rainbow-6: 300 100% 60%;   /* Magenta */
 
     --radius: 0.5rem;
 
@@ -124,4 +132,42 @@ All colors MUST be HSL.
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Rainbow border animation */
+@keyframes rainbow-border {
+  0% {
+    border-color: hsl(var(--rainbow-1));
+    box-shadow: 0 0 20px hsl(var(--rainbow-1) / 0.5);
+  }
+  16.66% {
+    border-color: hsl(var(--rainbow-2));
+    box-shadow: 0 0 20px hsl(var(--rainbow-2) / 0.5);
+  }
+  33.33% {
+    border-color: hsl(var(--rainbow-3));
+    box-shadow: 0 0 20px hsl(var(--rainbow-3) / 0.5);
+  }
+  50% {
+    border-color: hsl(var(--rainbow-4));
+    box-shadow: 0 0 20px hsl(var(--rainbow-4) / 0.5);
+  }
+  66.66% {
+    border-color: hsl(var(--rainbow-5));
+    box-shadow: 0 0 20px hsl(var(--rainbow-5) / 0.5);
+  }
+  83.33% {
+    border-color: hsl(var(--rainbow-6));
+    box-shadow: 0 0 20px hsl(var(--rainbow-6) / 0.5);
+  }
+  100% {
+    border-color: hsl(var(--rainbow-1));
+    box-shadow: 0 0 20px hsl(var(--rainbow-1) / 0.5);
+  }
+}
+
+.rainbow-border {
+  animation: rainbow-border 3s linear infinite;
+  border-width: 2px;
+  border-style: solid;
 }

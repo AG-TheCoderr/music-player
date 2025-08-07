@@ -7,6 +7,7 @@ import { Upload, Link, Music, FileAudio } from 'lucide-react';
 import { useAudioPlayer } from '../audio/AudioPlayerProvider';
 import { useToast } from '@/hooks/use-toast';
 import { StreamingService } from '@/services/streamingService';
+import { AudioProxyService } from '@/services/audioProxyService';
 
 export const FileLoader: React.FC = () => {
   const { loadTrack, addToPlaylist } = useAudioPlayer();
@@ -91,8 +92,28 @@ export const FileLoader: React.FC = () => {
       
       let track;
       
-      // Check if URL needs special streaming handling
-      if (StreamingService.needsWorkaround(url)) {
+      // Check if URL needs proxy extraction
+      if (AudioProxyService.needsProxy(url)) {
+        const extractedAudio = await AudioProxyService.extractAudioUrl(url);
+        if (extractedAudio) {
+          track = {
+            id: `extracted-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            title: extractedAudio.title,
+            artist: extractedAudio.artist,
+            duration: 0,
+            src: extractedAudio.streamUrl,
+            artwork: extractedAudio.thumbnail
+          };
+          
+          toast({
+            title: "Audio extracted",
+            description: `Successfully extracted audio from ${new URL(url).hostname}`,
+          });
+        } else {
+          throw new Error('Failed to extract audio');
+        }
+      } else if (StreamingService.needsWorkaround(url)) {
+        // Fallback to old streaming service
         const streamTrack = await StreamingService.createStreamableTrack(url);
         track = {
           id: `stream-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -123,7 +144,7 @@ export const FileLoader: React.FC = () => {
     } catch (error) {
       toast({
         title: "Error loading URL",
-        description: "Failed to load audio from the provided URL. Try a direct audio file URL instead.",
+        description: "Failed to load audio from the provided URL. Try using the music search feature instead.",
         variant: "destructive"
       });
     }
@@ -146,7 +167,7 @@ export const FileLoader: React.FC = () => {
   };
 
   return (
-    <Card className="p-6 bg-gradient-surface border-audio-control">
+    <Card className="p-6 bg-gradient-surface border-audio-control rainbow-border">
       <div className="space-y-6">
         <div className="flex items-center space-x-2">
           <Music className="w-5 h-5 text-primary" />

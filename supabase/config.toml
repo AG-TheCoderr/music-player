@@ -1,1 +1,4 @@
 project_id = "oqadksqsoddegadylwtr"
+
+[functions.audio-proxy]
+verify_jwt = false
