@@ -30,7 +30,7 @@ const mockSearchResults = (query: string, platform: string): SearchResult[] => {
       title: `${query} - Official Audio`,
       artist: 'Various Artists',
       duration: 240,
-      streamUrl: 'https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3',
+      streamUrl: 'https://commondatastorage.googleapis.com/codeskulptor-demos/DDR_assets/Kangaroo_MusiQue_-_The_Neverwritten_Role_Playing_Game.mp3',
       thumbnail: '/placeholder.svg',
       platform: 'youtube'
     },
@@ -39,7 +39,7 @@ const mockSearchResults = (query: string, platform: string): SearchResult[] => {
       title: `${query} (Remix)`,
       artist: 'SoundCloud Artists',
       duration: 180,
-      streamUrl: 'https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3',
+      streamUrl: 'https://commondatastorage.googleapis.com/codeskulptor-assets/Epoq-Lepidoptera.ogg',
       thumbnail: '/placeholder.svg',
       platform: 'soundcloud'
     },
@@ -48,7 +48,7 @@ const mockSearchResults = (query: string, platform: string): SearchResult[] => {
       title: `${query} - Radio Edit`,
       artist: 'Popular Artist',
       duration: 200,
-      streamUrl: 'https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3',
+      streamUrl: 'https://commondatastorage.googleapis.com/codeskulptor-demos/DDR_assets/Sevish_-__nbsp_.mp3',
       thumbnail: '/placeholder.svg',
       platform: 'spotify'
     }
@@ -64,7 +64,7 @@ const extractAudioUrl = async (url: string): Promise<{ streamUrl: string; title:
   if (url.includes('youtube.com') || url.includes('youtu.be')) {
     const videoId = url.match(/(?:v=|\/watch\?v=|youtu\.be\/)([^&\n?#]+)/)?.[1];
     return {
-      streamUrl: 'https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3', // Demo audio
+      streamUrl: 'https://commondatastorage.googleapis.com/codeskulptor-demos/DDR_assets/Kangaroo_MusiQue_-_The_Neverwritten_Role_Playing_Game.mp3',
       title: `YouTube Video ${videoId}`,
       artist: 'YouTube Music',
       thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`
@@ -74,7 +74,7 @@ const extractAudioUrl = async (url: string): Promise<{ streamUrl: string; title:
   // SoundCloud URL extraction (simplified mock)
   if (url.includes('soundcloud.com')) {
     return {
-      streamUrl: 'https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3', // Demo audio
+      streamUrl: 'https://commondatastorage.googleapis.com/codeskulptor-assets/Epoq-Lepidoptera.ogg',
       title: 'SoundCloud Track',
       artist: 'SoundCloud Artist',
       thumbnail: '/placeholder.svg'
