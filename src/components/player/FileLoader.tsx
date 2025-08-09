@@ -29,12 +29,15 @@ export const FileLoader: React.FC = () => {
 
   const createTrackFromUrl = (url: string) => {
     const fileName = url.split('/').pop() || 'Unknown Track';
+    const src = AudioProxyService.shouldProxyUrl(url)
+      ? AudioProxyService.buildProxiedUrl(url)
+      : url;
     return {
       id: `url-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       title: fileName.replace(/\.[^/.]+$/, ""),
       artist: 'Unknown Artist',
       duration: 0,
-      src: url,
+      src,
       artwork: undefined
     };
   };
@@ -96,12 +99,13 @@ export const FileLoader: React.FC = () => {
       if (AudioProxyService.needsProxy(url)) {
         const extractedAudio = await AudioProxyService.extractAudioUrl(url);
         if (extractedAudio) {
+          const proxied = AudioProxyService.buildProxiedUrl(extractedAudio.streamUrl);
           track = {
             id: `extracted-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             title: extractedAudio.title,
             artist: extractedAudio.artist,
             duration: 0,
-            src: extractedAudio.streamUrl,
+            src: proxied,
             artwork: extractedAudio.thumbnail
           };
           
@@ -115,12 +119,15 @@ export const FileLoader: React.FC = () => {
       } else if (StreamingService.needsWorkaround(url)) {
         // Fallback to old streaming service
         const streamTrack = await StreamingService.createStreamableTrack(url);
+        const src = AudioProxyService.shouldProxyUrl(streamTrack.streamUrl)
+          ? AudioProxyService.buildProxiedUrl(streamTrack.streamUrl)
+          : streamTrack.streamUrl;
         track = {
           id: `stream-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           title: streamTrack.title,
           artist: streamTrack.artist,
           duration: 0,
-          src: streamTrack.streamUrl,
+          src,
           artwork: streamTrack.artwork
         };
         

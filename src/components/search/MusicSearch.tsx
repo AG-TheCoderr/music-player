@@ -51,20 +51,38 @@ export const MusicSearch: React.FC = () => {
   };
 
   const handlePlayTrack = async (result: SearchResult) => {
-    const track = {
-      id: result.id,
-      title: result.title,
-      artist: result.artist,
-      duration: result.duration,
-      src: result.streamUrl,
-      artwork: result.thumbnail
-    };
-
     try {
+      let src = result.streamUrl;
+      let title = result.title;
+      let artist = result.artist;
+      let artwork = result.thumbnail;
+
+      if (AudioProxyService.needsProxy(result.streamUrl)) {
+        const extracted = await AudioProxyService.extractAudioUrl(result.streamUrl);
+        if (!extracted) throw new Error('Extraction failed');
+        src = extracted.streamUrl;
+        title = extracted.title;
+        artist = extracted.artist;
+        artwork = extracted.thumbnail;
+      }
+
+      if (AudioProxyService.shouldProxyUrl(src)) {
+        src = AudioProxyService.buildProxiedUrl(src);
+      }
+
+      const track = {
+        id: result.id,
+        title,
+        artist,
+        duration: result.duration,
+        src,
+        artwork
+      };
+
       await loadTrack(track);
       toast({
         title: "Playing track",
-        description: `${result.title} by ${result.artist}`,
+        description: `${title} by ${artist}`,
       });
     } catch (error) {
       toast({
@@ -75,21 +93,33 @@ export const MusicSearch: React.FC = () => {
     }
   };
 
-  const handleAddToPlaylist = (result: SearchResult) => {
-    const track = {
-      id: result.id,
-      title: result.title,
-      artist: result.artist,
-      duration: result.duration,
-      src: result.streamUrl,
-      artwork: result.thumbnail
-    };
+  const handleAddToPlaylist = async (result: SearchResult) => {
+    try {
+      let src = result.streamUrl;
+      let title = result.title;
+      let artist = result.artist;
+      let artwork = result.thumbnail;
 
-    addToPlaylist(track);
-    toast({
-      title: "Added to playlist",
-      description: `${result.title} by ${result.artist}`,
-    });
+      if (AudioProxyService.needsProxy(result.streamUrl)) {
+        const extracted = await AudioProxyService.extractAudioUrl(result.streamUrl);
+        if (extracted) {
+          src = extracted.streamUrl;
+          title = extracted.title;
+          artist = extracted.artist;
+          artwork = extracted.thumbnail;
+        }
+      }
+
+      if (AudioProxyService.shouldProxyUrl(src)) {
+        src = AudioProxyService.buildProxiedUrl(src);
+      }
+
+      const track = { id: result.id, title, artist, duration: result.duration, src, artwork };
+      addToPlaylist(track);
+      toast({ title: "Added to playlist", description: `${title} by ${artist}` });
+    } catch (error) {
+      toast({ title: "Add failed", description: "Could not add this track.", variant: "destructive" });
+    }
   };
 
   const formatDuration = (seconds: number) => {

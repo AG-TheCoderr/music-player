@@ -18,6 +18,30 @@ interface ExtractResult {
 }
 
 export class AudioProxyService {
+  private static SUPABASE_URL = 'https://oqadksqsoddegadylwtr.supabase.co';
+
+  // Build a proxied URL for cross-origin audio to bypass CORS and support Range
+  static buildProxiedUrl(url: string): string {
+    try {
+      if (!this.shouldProxyUrl(url)) return url;
+      return `${this.SUPABASE_URL}/functions/v1/audio-stream-proxy?url=${encodeURIComponent(url)}`;
+    } catch {
+      return url;
+    }
+  }
+
+  // Determine if a URL is cross-origin and should be proxied
+  static shouldProxyUrl(url: string): boolean {
+    try {
+      if (!url) return false;
+      if (url.startsWith('/')) return false; // same-origin relative
+      const u = new URL(url, window.location.origin);
+      return u.origin !== window.location.origin;
+    } catch {
+      return false;
+    }
+  }
+
   // Search for music across platforms
   static async searchMusic(query: string, platform: 'youtube' | 'soundcloud' | 'spotify' | 'all' = 'all'): Promise<SearchResult[]> {
     try {

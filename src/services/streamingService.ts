@@ -70,7 +70,7 @@ export class StreamingService {
     return {
       title: 'Demo Track - Ambient Soundscape',
       artist: 'Sonic Studio Pro',
-      streamUrl: 'https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3', // Public domain audio
+      streamUrl: '/audio/demo.mp3',
       artwork: '/placeholder.svg'
     };
   }
