@@ -91,7 +91,19 @@ export const FileLoader: React.FC = () => {
     if (!urlInput.trim()) return;
 
     try {
-      const url = urlInput.trim();
+      const input = urlInput.trim();
+      // Extract first valid http(s) URL from any pasted text (e.g., console messages)
+      const url = input.match(/https?:\/\/[^\s"']+/)?.[0] ?? input;
+
+      // Guard against pasted image CDN links like img.youtube.com (not playable audio)
+      if (/^https?:\/\/(?:[^\/]*\.)?img\.youtube\.com\//i.test(url)) {
+        toast({
+          title: "Invalid URL",
+          description: "That looks like an image link. Please paste a direct audio URL or the actual track page.",
+          variant: "destructive"
+        });
+        return;
+      }
       
       let track;
       
