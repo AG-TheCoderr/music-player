@@ -196,9 +196,13 @@ export const MusicSearch: React.FC = () => {
                   <div className="w-12 h-12 bg-muted rounded-lg flex items-center justify-center flex-shrink-0">
                     {result.thumbnail ? (
                       <img
-                        src={result.thumbnail}
-                        alt={result.title}
+                        src={AudioProxyService.buildProxiedUrl(result.thumbnail)}
+                        alt={`${result.title} by ${result.artist} thumbnail`}
                         className="w-full h-full object-cover rounded-lg"
+                        loading="lazy"
+                        decoding="async"
+                        referrerPolicy="no-referrer"
+                        onError={(e) => { e.currentTarget.src = '/placeholder.svg'; }}
                       />
                     ) : (
                       <Music className="w-6 h-6 text-muted-foreground" />
