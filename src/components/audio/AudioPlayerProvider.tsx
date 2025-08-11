@@ -44,6 +44,9 @@ interface AudioPlayerActions {
   toggleRepeat: () => void;
   addToPlaylist: (track: Track) => void;
   removeFromPlaylist: (trackId: string) => void;
+  reorderPlaylist: (fromIndex: number, toIndex: number) => void;
+  playTrackAtIndex: (index: number) => void;
+  clearPlaylist: () => void;
   getFrequencyData: () => Uint8Array;
   getTimeDomainData: () => Uint8Array;
 }
@@ -160,7 +163,7 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (state.isPlaying) {
       animationFrameRef.current = requestAnimationFrame(updateTime);
     }
-  }, [state.isPlaying, state.repeatMode, state.currentTrackIndex, state.playlist.length]);
+  }, [state.isPlaying, state.repeatMode, state.currentTrackIndex, state.playlist, loadTrack]);
 
   useEffect(() => {
     if (state.isPlaying) {
@@ -232,7 +235,7 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       console.error('Error loading track:', error);
       setState(prev => ({ ...prev, isLoading: false }));
     }
-  }, [state.volume, state.equalizerBands, state.effects]);
+  }, [state.volume, state.equalizerBands, state.effects, play, pause, nextTrack, previousTrack, seekTo, state.currentTime, state.duration]);
 
   const play = useCallback(() => {
     if (audioEngineRef.current) {
@@ -296,7 +299,7 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     newEQ.forEach((gain, index) => {
       setEqualizerBand(index, gain);
     });
-  }, [state.equalizerBands]);
+  }, [state.equalizerBands, setEqualizerBand, setEqualizerPreset]);
 
   const setEqualizerBand = useCallback((index: number, gain: number) => {
     if (audioEngineRef.current) {
@@ -390,6 +393,34 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }));
   }, []);
 
+  const reorderPlaylist = useCallback((fromIndex: number, toIndex: number) => {
+    setState(prev => {
+      const newPlaylist = [...prev.playlist];
+      const [movedTrack] = newPlaylist.splice(fromIndex, 1);
+      newPlaylist.splice(toIndex, 0, movedTrack);
+      return { ...prev, playlist: newPlaylist };
+    });
+  }, []);
+
+  const playTrackAtIndex = useCallback((index: number) => {
+    if (index >= 0 && index < state.playlist.length) {
+      setState(prev => ({ ...prev, currentTrackIndex: index }));
+      loadTrack(state.playlist[index]);
+    }
+  }, [state.playlist, loadTrack]);
+
+  const clearPlaylist = useCallback(() => {
+    stop();
+    setState(prev => ({
+      ...prev,
+      playlist: [],
+      currentTrackIndex: -1,
+      currentTrack: null,
+      duration: 0,
+      currentTime: 0,
+    }));
+  }, [stop]);
+
   const contextValue: AudioPlayerContextType = {
     ...state,
     loadTrack,
@@ -408,6 +439,9 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     toggleRepeat,
     addToPlaylist,
     removeFromPlaylist,
+    reorderPlaylist,
+    playTrackAtIndex,
+    clearPlaylist,
     getFrequencyData,
     getTimeDomainData
   };

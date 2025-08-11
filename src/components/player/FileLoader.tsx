@@ -65,11 +65,6 @@ export const FileLoader: React.FC = () => {
       for (const file of audioFiles) {
         const track = createTrackFromFile(file);
         
-        if (audioFiles.indexOf(file) === 0) {
-          // Load first file immediately
-          await loadTrack(track);
-        }
-        
         // Add all files to playlist
         addToPlaylist(track);
       }
@@ -93,7 +88,7 @@ export const FileLoader: React.FC = () => {
     try {
       const input = urlInput.trim();
       // Extract first valid http(s) URL from any pasted text (e.g., console messages)
-      const url = input.match(/https?:\/\/[^\s"']+/)?.[0] ?? input;
+      const url = input.match(/https?:[/][/][^\s"']+/)?.[0] ?? input;
 
       // Guard against pasted image CDN links like img.youtube.com (not playable audio)
       if (/^https?:\/\/(?:[^\/]*\.)?img\.youtube\.com\//i.test(url)) {
@@ -156,7 +151,6 @@ export const FileLoader: React.FC = () => {
         });
       }
       
-      await loadTrack(track);
       addToPlaylist(track);
       setUrlInput('');
       
@@ -283,7 +277,6 @@ export const FileLoader: React.FC = () => {
                 src: demoTrack.streamUrl,
                 artwork: demoTrack.artwork
               };
-              await loadTrack(track);
               addToPlaylist(track);
               toast({
                 title: "Demo track loaded",

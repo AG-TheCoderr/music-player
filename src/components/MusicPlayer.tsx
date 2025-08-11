@@ -8,6 +8,7 @@ import { FileLoader } from './player/FileLoader';
 import { ModeSelector } from './player/ModeSelector';
 import { Visualizer } from './audio/Visualizer';
 import { MusicSearch } from './search/MusicSearch';
+import { PlaylistPanel } from './player/PlaylistPanel';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Headphones, Settings, Upload, BarChart3 } from 'lucide-react';
@@ -157,6 +158,7 @@ const MusicPlayerContent: React.FC = () => {
                       </div>
                     </div>
                   </Card>
+                  <PlaylistPanel />
                 </div>
               </div>
             </TabsContent>
