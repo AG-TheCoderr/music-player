@@ -9,7 +9,12 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { GripVertical, X } from 'lucide-react';
 
-const SortableTrackItem = ({ track, index }) => {
+interface SortableTrackItemProps {
+  track: Track;
+  index: number;
+}
+
+const SortableTrackItem: React.FC<SortableTrackItemProps> = ({ track, index }) => {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: track.id });
   const { playTrackAtIndex, removeFromPlaylist, currentTrack } = useAudioPlayer();
 
