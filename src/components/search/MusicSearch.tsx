@@ -24,7 +24,7 @@ export const MusicSearch: React.FC = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [selectedPlatform, setSelectedPlatform] = useState<'all' | 'youtube' | 'soundcloud' | 'spotify'>('all');
   
-  const { loadTrack, addToPlaylist } = useAudioPlayer();
+  const { loadTrack, addToPlaylist, loadYouTube } = useAudioPlayer();
   const { toast } = useToast();
 
   const handleSearch = async () => {
@@ -52,12 +52,12 @@ export const MusicSearch: React.FC = () => {
 
   const handlePlayTrack = async (result: SearchResult) => {
     try {
-      let src = result.streamUrl;
+  let src = result.streamUrl;
       let title = result.title;
       let artist = result.artist;
       let artwork = result.thumbnail;
 
-      if (AudioProxyService.needsProxy(result.streamUrl)) {
+  if (result.platform !== 'youtube' && AudioProxyService.needsProxy(result.streamUrl)) {
         const extracted = await AudioProxyService.extractAudioUrl(result.streamUrl);
         if (!extracted) throw new Error('Extraction failed');
         src = extracted.streamUrl;
@@ -66,20 +66,16 @@ export const MusicSearch: React.FC = () => {
         artwork = extracted.thumbnail;
       }
 
-      if (AudioProxyService.shouldProxyUrl(src)) {
+  if (result.platform !== 'youtube' && AudioProxyService.shouldProxyUrl(src)) {
         src = AudioProxyService.buildProxiedUrl(src);
       }
 
-      const track = {
-        id: result.id,
-        title,
-        artist,
-        duration: result.duration,
-        src,
-        artwork
-      };
-
-      await loadTrack(track);
+      if (result.platform === 'youtube') {
+        await loadYouTube(src, { title, artist, artwork });
+      } else {
+        const track = { id: result.id, title, artist, duration: result.duration, src, artwork };
+        await loadTrack(track);
+      }
       toast({
         title: "Playing track",
         description: `${title} by ${artist}`,
@@ -187,9 +183,9 @@ export const MusicSearch: React.FC = () => {
               Search Results ({results.length})
             </h4>
             <div className="space-y-2 max-h-96 overflow-y-auto">
-              {results.map((result) => (
+              {results.map((result, idx) => (
                 <div
-                  key={result.id}
+                  key={`${result.platform}:${result.id}:${idx}`}
                   className="flex items-center space-x-3 p-3 bg-audio-control rounded-lg border border-border hover:bg-audio-active transition-smooth"
                 >
                   {/* Thumbnail */}

@@ -45,6 +45,43 @@ export class AudioProxyService {
   // Search for music across platforms
   static async searchMusic(query: string, platform: 'youtube' | 'soundcloud' | 'spotify' | 'all' = 'all'): Promise<SearchResult[]> {
     try {
+      // Use dedicated YouTube function when explicitly searching YouTube
+      if (platform === 'youtube') {
+        const { data, error } = await supabase.functions.invoke('youtube-search', {
+          body: { query, maxResults: 20 }
+        });
+        if (error) {
+          console.error('YouTube search error:', error);
+          return [];
+        }
+        return (data?.results as SearchResult[]) || [];
+      }
+
+      // For 'all', merge audio-proxy results with YouTube to integrate into the original search bar
+      if (platform === 'all') {
+        const [baseRes, ytRes] = await Promise.all([
+          supabase.functions.invoke('audio-proxy', { body: { action: 'search', query, platform: 'all' } }),
+          supabase.functions.invoke('youtube-search', { body: { query, maxResults: 15 } })
+        ]);
+
+        const baseResults = (baseRes.data?.results as SearchResult[]) || [];
+        const ytResults = (ytRes.data?.results as SearchResult[]) || [];
+
+        // De-duplicate by id+platform
+        const seen = new Set<string>();
+        const merged: SearchResult[] = [];
+        for (const arr of [baseResults, ytResults]) {
+          for (const r of arr) {
+            const key = `${r.platform}:${r.id}`;
+            if (!seen.has(key)) {
+              seen.add(key);
+              merged.push(r);
+            }
+          }
+        }
+        return merged;
+      }
+
       const { data, error } = await supabase.functions.invoke('audio-proxy', {
         body: {
           action: 'search',

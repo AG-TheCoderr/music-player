@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { AudioEngine, AudioEffects } from './AudioEngine';
 import { MediaSessionService } from '@/services/mediaSession';
+import { YouTubeController } from '@/services/youtubeController';
 
 interface Track {
   id: string;
@@ -25,10 +26,12 @@ interface AudioPlayerState {
   effects: AudioEffects;
   isShuffled: boolean;
   repeatMode: 'none' | 'one' | 'all';
+  externalSource: 'none' | 'youtube';
 }
 
 interface AudioPlayerActions {
   loadTrack: (track: Track) => Promise<void>;
+  loadYouTube: (url: string, meta?: Partial<Track>) => Promise<void>;
   play: () => void;
   pause: () => void;
   stop: () => void;
@@ -109,7 +112,8 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     equalizerBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     effects: initialEffects,
     isShuffled: false,
-    repeatMode: 'none'
+  repeatMode: 'none',
+  externalSource: 'none'
   });
 
   // Initialize audio engine
@@ -127,27 +131,20 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   // Update time
   const updateTime = useCallback(() => {
-    if (audioEngineRef.current && state.isPlaying) {
+    if (state.externalSource === 'youtube') {
+      const yt = YouTubeController.getState();
+      setState(prev => ({ ...prev, currentTime: yt.currentTime, duration: yt.duration, isPlaying: yt.playing }));
+      MediaSessionService.updatePosition(yt.currentTime, yt.duration || 0);
+    } else if (audioEngineRef.current && state.isPlaying) {
       const currentTime = audioEngineRef.current.getCurrentTime();
       const duration = audioEngineRef.current.getDuration();
-      
-      setState(prev => ({
-        ...prev,
-        currentTime,
-        duration: duration || prev.duration
-      }));
-
-      // Update Media Session position
+      setState(prev => ({ ...prev, currentTime, duration: duration || prev.duration }));
       MediaSessionService.updatePosition(currentTime, duration || 0);
-
-      // Check if track ended
       if (duration > 0 && currentTime >= duration - 0.1) {
-        // Handle repeat/next track
         if (state.repeatMode === 'one') {
           audioEngineRef.current.setCurrentTime(0);
           audioEngineRef.current.play();
         } else if (state.repeatMode === 'all' || state.currentTrackIndex < state.playlist.length - 1) {
-          // Auto-advance to next track
           const nextIndex = state.currentTrackIndex + 1;
           if (nextIndex < state.playlist.length) {
             loadTrack(state.playlist[nextIndex]);
@@ -160,10 +157,10 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }
     }
 
-    if (state.isPlaying) {
+    if (state.isPlaying || state.externalSource === 'youtube') {
       animationFrameRef.current = requestAnimationFrame(updateTime);
     }
-  }, [state.isPlaying, state.repeatMode, state.currentTrackIndex, state.playlist, loadTrack]);
+  }, [state.isPlaying, state.repeatMode, state.currentTrackIndex, state.playlist.length, state.externalSource]);
 
   useEffect(() => {
     if (state.isPlaying) {
@@ -186,6 +183,8 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setState(prev => ({ ...prev, isLoading: true, currentTrack: track }));
 
     try {
+      // Disable external source when loading a normal track
+      setState(prev => ({ ...prev, externalSource: 'none' }));
       await audioEngineRef.current.loadAudio(track.src);
       audioEngineRef.current.setVolume(state.volume);
       
@@ -235,44 +234,107 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       console.error('Error loading track:', error);
       setState(prev => ({ ...prev, isLoading: false }));
     }
-  }, [state.volume, state.equalizerBands, state.effects, play, pause, nextTrack, previousTrack, seekTo, state.currentTime, state.duration]);
+  }, [state.volume, state.equalizerBands, state.effects, state.currentTime, state.duration]);
+
+  // Load a YouTube URL into a hidden global iframe and set as active external source
+  const loadYouTube = useCallback(async (url: string, meta?: Partial<Track>) => {
+    setState(prev => ({ ...prev, isLoading: true }));
+    try {
+      const containerId = 'yt-global-player';
+      if (!document.getElementById(containerId)) {
+        const el = document.createElement('div');
+        el.id = containerId;
+        el.style.position = 'fixed';
+        el.style.left = '-9999px';
+        el.style.top = '-9999px';
+        el.style.width = '320px';
+        el.style.height = '180px';
+        document.body.appendChild(el);
+      }
+      await YouTubeController.load(containerId, url);
+      const title = meta?.title || 'YouTube Video';
+      const artist = meta?.artist || 'YouTube';
+      const artwork = meta?.artwork;
+      const track: Track = { id: `yt-${Date.now()}`, title, artist, duration: 0, src: url, artwork };
+      setState(prev => ({ ...prev, currentTrack: track, externalSource: 'youtube', isLoading: false }));
+      // Media session handlers will use current context methods via window callbacks
+      MediaSessionService.setupMediaSession(track, {
+        onPlay: () => YouTubeController.play(),
+        onPause: () => YouTubeController.pause(),
+        onNextTrack: () => {},
+        onPreviousTrack: () => {},
+        onSeek: (time) => YouTubeController.seekTo(time)
+      });
+    } catch (e) {
+      console.error('YouTube load error', e);
+      setState(prev => ({ ...prev, isLoading: false }));
+    }
+  }, []);
 
   const play = useCallback(() => {
+    if (state.externalSource === 'youtube') {
+      YouTubeController.play();
+      setState(prev => ({ ...prev, isPlaying: true }));
+      MediaSessionService.updatePlaybackState('playing');
+      return;
+    }
     if (audioEngineRef.current) {
       audioEngineRef.current.play();
       setState(prev => ({ ...prev, isPlaying: true }));
       MediaSessionService.updatePlaybackState('playing');
     }
-  }, []);
+  }, [state.externalSource]);
 
   const pause = useCallback(() => {
+    if (state.externalSource === 'youtube') {
+      YouTubeController.pause();
+      setState(prev => ({ ...prev, isPlaying: false }));
+      MediaSessionService.updatePlaybackState('paused');
+      return;
+    }
     if (audioEngineRef.current) {
       audioEngineRef.current.pause();
       setState(prev => ({ ...prev, isPlaying: false }));
       MediaSessionService.updatePlaybackState('paused');
     }
-  }, []);
+  }, [state.externalSource]);
 
   const stop = useCallback(() => {
+    if (state.externalSource === 'youtube') {
+      YouTubeController.pause();
+      YouTubeController.seekTo(0);
+      setState(prev => ({ ...prev, isPlaying: false, currentTime: 0 }));
+      return;
+    }
     if (audioEngineRef.current) {
       audioEngineRef.current.stop();
       setState(prev => ({ ...prev, isPlaying: false, currentTime: 0 }));
     }
-  }, []);
+  }, [state.externalSource]);
 
   const setVolume = useCallback((volume: number) => {
+    if (state.externalSource === 'youtube') {
+      YouTubeController.setVolume(volume);
+      setState(prev => ({ ...prev, volume }));
+      return;
+    }
     if (audioEngineRef.current) {
       audioEngineRef.current.setVolume(volume);
       setState(prev => ({ ...prev, volume }));
     }
-  }, []);
+  }, [state.externalSource]);
 
   const seekTo = useCallback((time: number) => {
+    if (state.externalSource === 'youtube') {
+      YouTubeController.seekTo(time);
+      setState(prev => ({ ...prev, currentTime: time }));
+      return;
+    }
     if (audioEngineRef.current) {
       audioEngineRef.current.setCurrentTime(time);
       setState(prev => ({ ...prev, currentTime: time }));
     }
-  }, []);
+  }, [state.externalSource]);
 
   const setMode = useCallback((mode: AudioPlayerState['mode']) => {
     setState(prev => ({ ...prev, mode }));
@@ -299,7 +361,7 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     newEQ.forEach((gain, index) => {
       setEqualizerBand(index, gain);
     });
-  }, [state.equalizerBands, setEqualizerBand, setEqualizerPreset]);
+  }, [state.equalizerBands]);
 
   const setEqualizerBand = useCallback((index: number, gain: number) => {
     if (audioEngineRef.current) {
@@ -380,10 +442,21 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, []);
 
   const addToPlaylist = useCallback((track: Track) => {
-    setState(prev => ({
-      ...prev,
-      playlist: [...prev.playlist, track]
-    }));
+    setState(prev => {
+      const existingIds = new Set(prev.playlist.map(t => t.id));
+      let id = track.id || `track-${Date.now()}`;
+      if (existingIds.has(id)) {
+        const base = id;
+        let counter = 2;
+        while (existingIds.has(`${base}-${counter}`)) counter++;
+        id = `${base}-${counter}`;
+      }
+      const item: Track = { ...track, id };
+      return {
+        ...prev,
+        playlist: [...prev.playlist, item]
+      };
+    });
   }, []);
 
   const removeFromPlaylist = useCallback((trackId: string) => {
@@ -424,6 +497,7 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const contextValue: AudioPlayerContextType = {
     ...state,
     loadTrack,
+  loadYouTube,
     play,
     pause,
     stop,
