@@ -50,7 +50,7 @@ export const PlaylistPanel = () => {
     })
   );
 
-  const handleDragEnd = (event) => {
+  const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
 
     if (active.id !== over.id) {
