@@ -53,9 +53,9 @@ export const PlaylistPanel = () => {
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
 
-    if (active.id !== over.id) {
+    if (active.id !== over?.id) {
       const oldIndex = playlist.findIndex(t => t.id === active.id);
-      const newIndex = playlist.findIndex(t => t.id === over.id);
+      const newIndex = playlist.findIndex(t => t.id === over?.id);
       reorderPlaylist(oldIndex, newIndex);
     }
   };
