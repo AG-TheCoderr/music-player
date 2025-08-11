@@ -1,8 +1,10 @@
+// @ts-nocheck
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
 };
 
 interface SearchResult {
@@ -59,9 +61,28 @@ serve(async (req) => {
   }
 
   try {
-    const { action, query, url, platform = 'all' }: ProxyRequest = await req.json();
+    // Safe body parse with GET query param fallbacks
+    let parsed: Partial<ProxyRequest> = {};
+    try {
+      const text = await req.text();
+      if (text) parsed = JSON.parse(text);
+    } catch (_) {
+      // ignore bad JSON
+    }
 
-    if (action === 'search' && query) {
+    const u = new URL(req.url);
+    const action = (parsed.action || (u.searchParams.get('action') as any)) as ProxyRequest['action'];
+    const query = (parsed.query || u.searchParams.get('query') || u.searchParams.get('q') || '') as string;
+    const url = (parsed.url || u.searchParams.get('url') || u.searchParams.get('u') || '') as string;
+    const platform = (parsed.platform || (u.searchParams.get('platform') as any) || 'all') as NonNullable<ProxyRequest['platform']>;
+
+    if (action === 'search') {
+      if (!query || !query.trim()) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Missing query', hint: 'Provide {"action":"search","query":"..."} in JSON body or use ?action=search&query=...' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
+      }
       // Use iTunes for reliable, legal previews
       let results: SearchResult[] = [];
       try {
@@ -76,7 +97,13 @@ serve(async (req) => {
       );
     }
 
-    if (action === 'extract' && url) {
+    if (action === 'extract') {
+      if (!url || !url.trim()) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Missing url', hint: 'Provide {"action":"extract","url":"https://..."} in JSON body or use ?action=extract&url=...' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
+      }
       // Explicitly do NOT attempt YouTube/SoundCloud extraction on Edge (no subprocess allowed)
       if (/youtube\.com|youtu\.be|music\.youtube\.com|soundcloud\.com/i.test(url)) {
         return new Response(
@@ -101,7 +128,7 @@ serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ success: false, error: 'Invalid request parameters' }),
+      JSON.stringify({ success: false, error: 'Invalid request', hint: 'Use action=search with query, or action=extract with url.' }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
     );
   } catch (error) {
