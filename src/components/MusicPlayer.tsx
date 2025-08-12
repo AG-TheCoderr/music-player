@@ -1,6 +1,6 @@
 import React from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { AudioPlayerProvider, useAudioPlayer } from './audio/AudioPlayerProvider';
+import { useAudioPlayer } from './audio/AudioPlayerProvider';
 import { PlayerControls } from './player/PlayerControls';
 import { Equalizer } from './player/Equalizer';
 import { EffectsPanel } from './player/EffectsPanel';
@@ -12,14 +12,28 @@ import { PlaylistPanel } from './player/PlaylistPanel';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Headphones, Settings, Upload, BarChart3 } from 'lucide-react';
+import { Auth } from './auth/Auth';
+import { useAuth } from './auth/AuthProvider';
+import { Button } from './ui/button';
 
-const MusicPlayerContent: React.FC = () => {
+export const MusicPlayer: React.FC = () => {
   const { equalizerBands } = useAudioPlayer();
+  const { user, logout } = useAuth();
   
   return (
     <div className="min-h-screen bg-background p-4 space-y-6">
         {/* Header */}
-        <div className="text-center space-y-2">
+        <div className="relative text-center space-y-2">
+          <div className="absolute top-0 right-0">
+            {user ? (
+              <div className="flex items-center space-x-2">
+                <span className="text-sm text-muted-foreground">{user.email}</span>
+                <Button variant="outline" size="sm" onClick={logout}>Logout</Button>
+              </div>
+            ) : (
+              <Auth />
+            )}
+          </div>
           <div className="flex items-center justify-center space-x-3">
             <div className="w-12 h-12 bg-gradient-primary rounded-full flex items-center justify-center animate-pulse-glow">
               <Headphones className="w-6 h-6 text-white" />
@@ -204,13 +218,5 @@ const MusicPlayerContent: React.FC = () => {
           </Tabs>
         </div>
     </div>
-  );
-};
-
-export const MusicPlayer: React.FC = () => {
-  return (
-    <AudioPlayerProvider>
-      <MusicPlayerContent />
-    </AudioPlayerProvider>
   );
 };

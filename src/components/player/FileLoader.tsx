@@ -88,7 +88,7 @@ export const FileLoader: React.FC = () => {
     try {
       const input = urlInput.trim();
       // Extract first valid http(s) URL from any pasted text (e.g., console messages)
-      const url = input.match(/https?:\/\/[^\s"']+/)?.[0] ?? input;
+      const url = input.match(new RegExp('https?://[^\\s"\'"]+'))?.[0] ?? input;
 
       // Guard against pasted image CDN links like img.youtube.com (not playable audio)
       if (/^https?:\/\/(?:[^\/]*\.)?img\.youtube\.com\//i.test(url)) {

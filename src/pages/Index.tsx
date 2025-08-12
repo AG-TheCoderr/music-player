@@ -1,7 +1,12 @@
 import { MusicPlayer } from '@/components/MusicPlayer';
+import { AudioPlayerProvider } from '@/components/audio/AudioPlayerProvider';
 
 const Index = () => {
-  return <MusicPlayer />;
+  return (
+    <AudioPlayerProvider>
+      <MusicPlayer />
+    </AudioPlayerProvider>
+  );
 };
 
 export default Index;

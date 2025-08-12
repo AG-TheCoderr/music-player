@@ -9,12 +9,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { GripVertical, X } from 'lucide-react';
 
-interface SortableTrackItemProps {
-  track: Track;
-  index: number;
-}
-
-const SortableTrackItem: React.FC<SortableTrackItemProps> = ({ track, index }) => {
+const SortableTrackItem = ({ track, index }) => {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: track.id });
   const { playTrackAtIndex, removeFromPlaylist, currentTrack } = useAudioPlayer();
 
@@ -50,12 +45,12 @@ export const PlaylistPanel = () => {
     })
   );
 
-  const handleDragEnd = (event: DragEndEvent) => {
+  const handleDragEnd = (event) => {
     const { active, over } = event;
 
-    if (active.id !== over?.id) {
+    if (active.id !== over.id) {
       const oldIndex = playlist.findIndex(t => t.id === active.id);
-      const newIndex = playlist.findIndex(t => t.id === over?.id);
+      const newIndex = playlist.findIndex(t => t.id === over.id);
       reorderPlaylist(oldIndex, newIndex);
     }
   };

@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { AudioEngine, AudioEffects } from './AudioEngine';
 import { MediaSessionService } from '@/services/mediaSession';
+import { useAuth } from '../auth/AuthProvider';
+import { supabase } from '@/integrations/supabase/client';
 
 interface Track {
   id: string;
@@ -19,6 +21,7 @@ interface AudioPlayerState {
   duration: number;
   isLoading: boolean;
   playlist: Track[];
+  playlistId: string | null;
   currentTrackIndex: number;
   mode: 'normal' | 'vocal-enhance' | 'instrument-focus' | 'bass-boost';
   equalizerBands: number[];
@@ -95,6 +98,8 @@ const equalizerPresets = {
 export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const audioEngineRef = useRef<AudioEngine | null>(null);
   const animationFrameRef = useRef<number>();
+  const { user } = useAuth();
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [state, setState] = useState<AudioPlayerState>({
     currentTrack: null,
@@ -104,6 +109,7 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     duration: 0,
     isLoading: false,
     playlist: [],
+    playlistId: null,
     currentTrackIndex: -1,
     mode: 'normal',
     equalizerBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -112,130 +118,9 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     repeatMode: 'none'
   });
 
-  // Initialize audio engine
-  useEffect(() => {
-    audioEngineRef.current = new AudioEngine();
-    return () => {
-      if (audioEngineRef.current) {
-        audioEngineRef.current.dispose();
-      }
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    };
-  }, []);
-
-  // Update time
-  const updateTime = useCallback(() => {
-    if (audioEngineRef.current && state.isPlaying) {
-      const currentTime = audioEngineRef.current.getCurrentTime();
-      const duration = audioEngineRef.current.getDuration();
-      
-      setState(prev => ({
-        ...prev,
-        currentTime,
-        duration: duration || prev.duration
-      }));
-
-      // Update Media Session position
-      MediaSessionService.updatePosition(currentTime, duration || 0);
-
-      // Check if track ended
-      if (duration > 0 && currentTime >= duration - 0.1) {
-        // Handle repeat/next track
-        if (state.repeatMode === 'one') {
-          audioEngineRef.current.setCurrentTime(0);
-          audioEngineRef.current.play();
-        } else if (state.repeatMode === 'all' || state.currentTrackIndex < state.playlist.length - 1) {
-          // Auto-advance to next track
-          const nextIndex = state.currentTrackIndex + 1;
-          if (nextIndex < state.playlist.length) {
-            loadTrack(state.playlist[nextIndex]);
-          } else if (state.repeatMode === 'all' && state.playlist.length > 0) {
-            loadTrack(state.playlist[0]);
-          }
-        } else {
-          setState(prev => ({ ...prev, isPlaying: false }));
-        }
-      }
-    }
-
-    if (state.isPlaying) {
-      animationFrameRef.current = requestAnimationFrame(updateTime);
-    }
-  }, [state.isPlaying, state.repeatMode, state.currentTrackIndex, state.playlist, loadTrack]);
-
-  useEffect(() => {
-    if (state.isPlaying) {
-      animationFrameRef.current = requestAnimationFrame(updateTime);
-    } else {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    }
-    return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    };
-  }, [state.isPlaying, updateTime]);
-
-  const loadTrack = useCallback(async (track: Track) => {
-    if (!audioEngineRef.current) return;
-
-    setState(prev => ({ ...prev, isLoading: true, currentTrack: track }));
-
-    try {
-      await audioEngineRef.current.loadAudio(track.src);
-      audioEngineRef.current.setVolume(state.volume);
-      
-      // Apply current EQ settings
-      state.equalizerBands.forEach((gain, index) => {
-        audioEngineRef.current!.setEqualizerBand(index, gain);
-      });
-
-      // Apply effects
-      audioEngineRef.current.setReverbSettings(state.effects.reverb);
-      audioEngineRef.current.setCompressorSettings(state.effects.compressor);
-      audioEngineRef.current.setDistortionAmount(state.effects.distortion.amount);
-
-      const audioElement = audioEngineRef.current.getAudioElement();
-      if (audioElement) {
-        audioElement.addEventListener('loadedmetadata', () => {
-          setState(prev => ({
-            ...prev,
-            duration: audioElement.duration,
-            isLoading: false
-          }));
-        });
-      }
-
-      // Setup Media Session
-      MediaSessionService.setupMediaSession(track, {
-        onPlay: play,
-        onPause: pause,
-        onNextTrack: nextTrack,
-        onPreviousTrack: previousTrack,
-        onSeek: (time) => {
-          if (time < 0) {
-            // Relative seek backward
-            seekTo(Math.max(0, state.currentTime + time));
-          } else if (time > state.duration) {
-            // Absolute seek
-            seekTo(time);
-          } else {
-            // Relative seek forward or absolute
-            seekTo(time > state.currentTime + 30 ? time : state.currentTime + time);
-          }
-        }
-      });
-
-      setState(prev => ({ ...prev, isLoading: false }));
-    } catch (error) {
-      console.error('Error loading track:', error);
-      setState(prev => ({ ...prev, isLoading: false }));
-    }
-  }, [state.volume, state.equalizerBands, state.effects, play, pause, nextTrack, previousTrack, seekTo, state.currentTime, state.duration]);
+  const loadTrackRef = useRef<(track: Track) => Promise<void>>();
+  const nextTrackRef = useRef<() => void>();
+  const previousTrackRef = useRef<() => void>();
 
   const play = useCallback(() => {
     if (audioEngineRef.current) {
@@ -253,12 +138,225 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   }, []);
 
+  const seekTo = useCallback((time: number) => {
+    if (audioEngineRef.current) {
+      audioEngineRef.current.setCurrentTime(time);
+      setState(prev => ({ ...prev, currentTime: time }));
+    }
+  }, []);
+
+  const loadTrack = useCallback(async (track: Track) => {
+    if (!audioEngineRef.current) return;
+
+    setState(prev => ({ ...prev, isLoading: true, currentTrack: track }));
+
+    try {
+      await audioEngineRef.current.loadAudio(track.src);
+      audioEngineRef.current.setVolume(state.volume);
+      
+      state.equalizerBands.forEach((gain, index) => {
+        audioEngineRef.current!.setEqualizerBand(index, gain);
+      });
+
+      audioEngineRef.current.setReverbSettings(state.effects.reverb);
+      audioEngineRef.current.setCompressorSettings(state.effects.compressor);
+      audioEngineRef.current.setDistortionAmount(state.effects.distortion.amount);
+
+      const audioElement = audioEngineRef.current.getAudioElement();
+      if (audioElement) {
+        audioElement.addEventListener('loadedmetadata', () => {
+          setState(prev => ({
+            ...prev,
+            duration: audioElement.duration,
+            isLoading: false
+          }));
+        });
+      }
+
+      MediaSessionService.setupMediaSession(track, {
+        onPlay: play,
+        onPause: pause,
+        onNextTrack: () => nextTrackRef.current?.(),
+        onPreviousTrack: () => previousTrackRef.current?.(),
+        onSeek: (time) => {
+          if (time < 0) {
+            seekTo(Math.max(0, state.currentTime + time));
+          } else if (time > state.duration) {
+            seekTo(time);
+          } else {
+            seekTo(time > state.currentTime + 30 ? time : state.currentTime + time);
+          }
+        }
+      });
+
+      setState(prev => ({ ...prev, isLoading: false }));
+    } catch (error) {
+      console.error('Error loading track:', error);
+      setState(prev => ({ ...prev, isLoading: false }));
+    }
+  }, [state.volume, state.equalizerBands, state.effects, play, pause, seekTo, state.currentTime, state.duration]);
+
+  const nextTrack = useCallback(() => {
+    if (state.playlist.length === 0) return;
+
+    let nextIndex = state.currentTrackIndex + 1;
+    if (nextIndex >= state.playlist.length) {
+      nextIndex = state.repeatMode === 'all' ? 0 : state.playlist.length - 1;
+    }
+
+    setState(prev => ({ ...prev, currentTrackIndex: nextIndex }));
+    loadTrack(state.playlist[nextIndex]);
+  }, [state.playlist, state.currentTrackIndex, state.repeatMode, loadTrack]);
+
+  const previousTrack = useCallback(() => {
+    if (state.playlist.length === 0) return;
+
+    let prevIndex = state.currentTrackIndex - 1;
+    if (prevIndex < 0) {
+      prevIndex = state.repeatMode === 'all' ? state.playlist.length - 1 : 0;
+    }
+
+    setState(prev => ({ ...prev, currentTrackIndex: prevIndex }));
+    loadTrack(state.playlist[prevIndex]);
+  }, [state.playlist, state.currentTrackIndex, state.repeatMode, loadTrack]);
+
+  useEffect(() => {
+    loadTrackRef.current = loadTrack;
+    nextTrackRef.current = nextTrack;
+    previousTrackRef.current = previousTrack;
+  });
+
+  const updateTime = useCallback(() => {
+    if (audioEngineRef.current && state.isPlaying) {
+      const currentTime = audioEngineRef.current.getCurrentTime();
+      const duration = audioEngineRef.current.getDuration();
+
+      setState(prev => ({
+        ...prev,
+        currentTime,
+        duration: duration || prev.duration
+      }));
+
+      MediaSessionService.updatePosition(currentTime, duration || 0);
+
+      if (duration > 0 && currentTime >= duration - 0.1) {
+        if (state.repeatMode === 'one') {
+          audioEngineRef.current.setCurrentTime(0);
+          audioEngineRef.current.play();
+        } else {
+          nextTrack();
+        }
+      }
+    }
+
+    if (state.isPlaying) {
+      animationFrameRef.current = requestAnimationFrame(updateTime);
+    }
+  }, [state.isPlaying, state.repeatMode, nextTrack]);
+
   const stop = useCallback(() => {
     if (audioEngineRef.current) {
       audioEngineRef.current.stop();
       setState(prev => ({ ...prev, isPlaying: false, currentTime: 0 }));
     }
   }, []);
+
+  const clearPlaylist = useCallback(() => {
+    stop();
+    setState(prev => ({
+      ...prev,
+      playlist: [],
+      playlistId: null,
+      currentTrackIndex: -1,
+      currentTrack: null,
+      duration: 0,
+      currentTime: 0,
+    }));
+  }, [stop]);
+
+  useEffect(() => {
+    audioEngineRef.current = new AudioEngine();
+    return () => {
+      if (audioEngineRef.current) {
+        audioEngineRef.current.dispose();
+      }
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (state.isPlaying) {
+      animationFrameRef.current = requestAnimationFrame(updateTime);
+    } else {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    }
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [state.isPlaying, updateTime]);
+
+  useEffect(() => {
+    if (user) {
+      const fetchPlaylist = async () => {
+        const { data, error } = await supabase
+          .from('playlists')
+          .select('*')
+          .eq('user_id', user.id)
+          .single();
+
+        if (data) {
+          console.log('Fetched playlist:', data);
+          setState(prev => ({ ...prev, playlist: data.tracks || [], playlistId: data.id }));
+        } else if (error && error.code !== 'PGRST116') {
+          console.error('Error fetching playlist:', error);
+        }
+      };
+      fetchPlaylist();
+    } else {
+      clearPlaylist();
+    }
+  }, [user, clearPlaylist]);
+
+  useEffect(() => {
+    if (user && !state.isLoading) {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+      debounceTimeoutRef.current = setTimeout(async () => {
+        const serializablePlaylist = state.playlist.filter(track => typeof track.src === 'string');
+        const playlistData = {
+          id: state.playlistId,
+          user_id: user.id,
+          name: 'Default Playlist',
+          tracks: serializablePlaylist,
+        };
+
+        const { data, error } = await supabase
+          .from('playlists')
+          .upsert(playlistData)
+          .select()
+          .single();
+
+        if (error) {
+          console.error('Error saving playlist:', error);
+        } else if (data) {
+          console.log('Saved playlist:', data);
+          setState(prev => ({ ...prev, playlistId: data.id }));
+        }
+      }, 2000);
+    }
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+    };
+  }, [state.playlist, user, state.isLoading, state.playlistId]);
 
   const setVolume = useCallback((volume: number) => {
     if (audioEngineRef.current) {
@@ -267,17 +365,27 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   }, []);
 
-  const seekTo = useCallback((time: number) => {
+  const setEqualizerBand = useCallback((index: number, gain: number) => {
     if (audioEngineRef.current) {
-      audioEngineRef.current.setCurrentTime(time);
-      setState(prev => ({ ...prev, currentTime: time }));
+      audioEngineRef.current.setEqualizerBand(index, gain);
+      setState(prev => ({
+        ...prev,
+        equalizerBands: prev.equalizerBands.map((band, i) => i === index ? gain : band)
+      }));
+    }
+  }, []);
+
+  const setEqualizerPreset = useCallback((preset: string) => {
+    if (preset in equalizerPresets && audioEngineRef.current) {
+      const gains = equalizerPresets[preset as keyof typeof equalizerPresets];
+      audioEngineRef.current.setAllEqualizerBands(gains);
+      setState(prev => ({ ...prev, equalizerBands: [...gains] }));
     }
   }, []);
 
   const setMode = useCallback((mode: AudioPlayerState['mode']) => {
     setState(prev => ({ ...prev, mode }));
     
-    // Apply mode-specific EQ settings
     let newEQ = [...state.equalizerBands];
     
     switch (mode) {
@@ -300,24 +408,6 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setEqualizerBand(index, gain);
     });
   }, [state.equalizerBands, setEqualizerBand, setEqualizerPreset]);
-
-  const setEqualizerBand = useCallback((index: number, gain: number) => {
-    if (audioEngineRef.current) {
-      audioEngineRef.current.setEqualizerBand(index, gain);
-      setState(prev => ({
-        ...prev,
-        equalizerBands: prev.equalizerBands.map((band, i) => i === index ? gain : band)
-      }));
-    }
-  }, []);
-
-  const setEqualizerPreset = useCallback((preset: string) => {
-    if (preset in equalizerPresets && audioEngineRef.current) {
-      const gains = equalizerPresets[preset as keyof typeof equalizerPresets];
-      audioEngineRef.current.setAllEqualizerBands(gains);
-      setState(prev => ({ ...prev, equalizerBands: [...gains] }));
-    }
-  }, []);
 
   const updateEffects = useCallback((newEffects: Partial<AudioEffects>) => {
     const updatedEffects = { ...state.effects, ...newEffects };
@@ -343,30 +433,6 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const getTimeDomainData = useCallback((): Uint8Array => {
     return audioEngineRef.current?.getTimeDomainData() || new Uint8Array(0);
   }, []);
-
-  const nextTrack = useCallback(() => {
-    if (state.playlist.length === 0) return;
-    
-    let nextIndex = state.currentTrackIndex + 1;
-    if (nextIndex >= state.playlist.length) {
-      nextIndex = state.repeatMode === 'all' ? 0 : state.playlist.length - 1;
-    }
-    
-    setState(prev => ({ ...prev, currentTrackIndex: nextIndex }));
-    loadTrack(state.playlist[nextIndex]);
-  }, [state.playlist, state.currentTrackIndex, state.repeatMode, loadTrack]);
-
-  const previousTrack = useCallback(() => {
-    if (state.playlist.length === 0) return;
-    
-    let prevIndex = state.currentTrackIndex - 1;
-    if (prevIndex < 0) {
-      prevIndex = state.repeatMode === 'all' ? state.playlist.length - 1 : 0;
-    }
-    
-    setState(prev => ({ ...prev, currentTrackIndex: prevIndex }));
-    loadTrack(state.playlist[prevIndex]);
-  }, [state.playlist, state.currentTrackIndex, state.repeatMode, loadTrack]);
 
   const toggleShuffle = useCallback(() => {
     setState(prev => ({ ...prev, isShuffled: !prev.isShuffled }));
@@ -408,18 +474,6 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       loadTrack(state.playlist[index]);
     }
   }, [state.playlist, loadTrack]);
-
-  const clearPlaylist = useCallback(() => {
-    stop();
-    setState(prev => ({
-      ...prev,
-      playlist: [],
-      currentTrackIndex: -1,
-      currentTrack: null,
-      duration: 0,
-      currentTime: 0,
-    }));
-  }, [stop]);
 
   const contextValue: AudioPlayerContextType = {
     ...state,
