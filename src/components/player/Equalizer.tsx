@@ -81,6 +81,8 @@ export const Equalizer: React.FC = () => {
                   max={12}
                   step={0.5}
                   onValueChange={(value) => handleBandChange(index, value)}
+                  thumbAriaLabel={`${frequencies[index]} gain`}
+                  thumbAriaValueText={`${equalizerBands[index] ?? 0} dB`}
                   className="h-full"
                 />
               </div>

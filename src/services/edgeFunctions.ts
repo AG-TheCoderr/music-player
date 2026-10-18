@@ -13,10 +13,10 @@ export class EdgeFunctionError extends Error {
 
 /** Turns whatever the function returned into a message a user can act on. */
 function describeFailure(payload: unknown, status: number): string {
-  const raw =
-    typeof payload === 'object' && payload !== null
-      ? JSON.stringify(payload)
-      : String(payload ?? '');
+  const record = (typeof payload === 'object' && payload !== null ? payload : null) as Record<string, unknown> | null;
+  const detail =
+    typeof record?.error === 'string' ? record.error : typeof payload === 'string' ? payload : '';
+  const raw = detail || (record ? JSON.stringify(record) : '');
 
   if (/YT_API_KEY/i.test(raw)) {
     return 'This feature is unavailable: the backend is missing the YT_API_KEY secret.';
@@ -33,8 +33,22 @@ function describeFailure(payload: unknown, status: number): string {
   if (status >= 500) {
     return 'The backend ran into an error. Please try again.';
   }
+  if (detail) {
+    return detail;
+  }
 
   return 'The request failed. Please try again.';
+}
+
+/**
+ * Some functions answer with HTTP 200 but still report `success: false` (for example "this URL is
+ * not a direct audio stream"). Without this check such a response is indistinguishable from an
+ * empty result and the user only sees "nothing found".
+ */
+export function assertFunctionSucceeded(payload: unknown): void {
+  if (payload && typeof payload === 'object' && (payload as { success?: unknown }).success === false) {
+    throw new EdgeFunctionError(describeFailure(payload, 200), 200);
+  }
 }
 
 /**

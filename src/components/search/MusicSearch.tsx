@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Search, Play, Plus, Music, Loader2, AlertTriangle } from 'lucide-react';
+import { Search, Play, Plus, Music, Loader2, AlertTriangle, Clock, X, History } from 'lucide-react';
 import { AudioProxyService } from '@/services/audioProxyService';
+import { loadRecentSearches, rememberSearch, clearRecentSearches } from '@/services/recentSearches';
 import { usePlayerActions } from '@/components/audio/AudioPlayerProvider';
 import { useToast } from '@/hooks/use-toast';
 
@@ -20,12 +21,36 @@ interface SearchResult {
 
 type Platform = 'all' | 'youtube' | 'soundcloud' | 'spotify';
 
-const PLATFORMS: { id: Platform; label: string }[] = [
-  { id: 'all', label: 'all' },
-  { id: 'youtube', label: 'youtube' },
-  { id: 'soundcloud', label: 'soundcloud' },
-  { id: 'spotify', label: 'spotify' },
+const PLATFORMS: { id: Platform; label: string; available: boolean }[] = [
+  { id: 'all', label: 'all', available: true },
+  { id: 'youtube', label: 'youtube', available: true },
+  { id: 'soundcloud', label: 'soundcloud', available: false },
+  { id: 'spotify', label: 'spotify', available: false },
 ];
+
+const SEARCH_DEBOUNCE_MS = 450;
+
+const formatDuration = (seconds: number) => {
+  if (!Number.isFinite(seconds) || seconds <= 0) return '--:--';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
+const getPlatformColor = (platform: string) => {
+  switch (platform) {
+    case 'youtube':
+      return 'bg-red-500';
+    case 'soundcloud':
+      return 'bg-orange-500';
+    case 'spotify':
+      return 'bg-green-500';
+    case 'itunes':
+      return 'bg-sky-500';
+    default:
+      return 'bg-primary';
+  }
+};
 
 export const MusicSearch: React.FC = () => {
   const [query, setQuery] = useState('');
@@ -33,36 +58,71 @@ export const MusicSearch: React.FC = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedPlatform, setSelectedPlatform] = useState<Platform>('all');
+  const [recent, setRecent] = useState<string[]>(() => loadRecentSearches());
 
   const { loadTrack, addToPlaylist, loadYouTube } = usePlayerActions();
   const { toast } = useToast();
 
-  const handleSearch = async () => {
-    if (!query.trim()) return;
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestIdRef = useRef(0);
 
-    setIsSearching(true);
-    setError(null);
-    try {
-      const searchResults = await AudioProxyService.searchMusic(query, selectedPlatform);
-      setResults(searchResults);
+  const runSearch = useCallback(
+    async (term: string, platform: Platform) => {
+      const trimmed = term.trim();
+      if (!trimmed) {
+        setResults([]);
+        setError(null);
+        return;
+      }
 
-      toast({
-        title: 'Search completed',
-        description: `Found ${searchResults.length} results for "${query}"`,
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Could not search for music. Please try again.';
-      setError(message);
+      // Only the newest request is allowed to write to the state.
+      const requestId = ++requestIdRef.current;
+
+      setIsSearching(true);
+      setError(null);
+
+      try {
+        const found = await AudioProxyService.searchMusic(trimmed, platform);
+        if (requestId !== requestIdRef.current) return;
+
+        setResults(found);
+        setRecent(rememberSearch(trimmed));
+
+        if (found.length === 0) {
+          setError(`No results found for "${trimmed}".`);
+        }
+      } catch (err) {
+        if (requestId !== requestIdRef.current) return;
+
+        const message = err instanceof Error ? err.message : 'Could not search for music. Please try again.';
+        setError(message);
+        setResults([]);
+        toast({ title: 'Search failed', description: message, variant: 'destructive' });
+      } finally {
+        if (requestId === requestIdRef.current) setIsSearching(false);
+      }
+    },
+    [toast]
+  );
+
+  // Debounced auto search while typing.
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    if (!query.trim()) {
       setResults([]);
-      toast({
-        title: 'Search failed',
-        description: message,
-        variant: 'destructive',
-      });
-    } finally {
-      setIsSearching(false);
+      setError(null);
+      return;
     }
-  };
+
+    debounceRef.current = setTimeout(() => {
+      runSearch(query, selectedPlatform);
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [query, selectedPlatform, runSearch]);
 
   const handlePlayTrack = async (result: SearchResult) => {
     try {
@@ -148,27 +208,7 @@ export const MusicSearch: React.FC = () => {
     }
   };
 
-  const formatDuration = (seconds: number) => {
-    if (!Number.isFinite(seconds) || seconds <= 0) return '--:--';
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const getPlatformColor = (platform: string) => {
-    switch (platform) {
-      case 'youtube':
-        return 'bg-red-500';
-      case 'soundcloud':
-        return 'bg-orange-500';
-      case 'spotify':
-        return 'bg-green-500';
-      case 'itunes':
-        return 'bg-sky-500';
-      default:
-        return 'bg-primary';
-    }
-  };
+  const previewCount = results.filter((result) => result.platform === 'itunes').length;
 
   return (
     <Card className="p-6 bg-gradient-surface border-audio-control rainbow-border">
@@ -186,9 +226,20 @@ export const MusicSearch: React.FC = () => {
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search for songs, artists, or albums..."
               className="flex-1 bg-audio-control border-border focus:border-primary"
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && debounceRef.current) clearTimeout(debounceRef.current);
+                if (e.key === 'Enter') runSearch(query, selectedPlatform);
+              }}
             />
-            <Button onClick={handleSearch} disabled={isSearching || !query.trim()} className="bg-primary hover:bg-primary/90">
+            <Button
+              onClick={() => {
+                if (debounceRef.current) clearTimeout(debounceRef.current);
+                runSearch(query, selectedPlatform);
+              }}
+              disabled={isSearching || !query.trim()}
+              aria-label="Search"
+              className="bg-primary hover:bg-primary/90"
+            >
               {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
             </Button>
           </div>
@@ -200,6 +251,12 @@ export const MusicSearch: React.FC = () => {
                 key={platform.id}
                 variant={selectedPlatform === platform.id ? 'default' : 'outline'}
                 size="sm"
+                disabled={!platform.available}
+                title={
+                  platform.available
+                    ? `Search ${platform.label}`
+                    : `Searching ${platform.label} needs API credentials that are not configured.`
+                }
                 onClick={() => setSelectedPlatform(platform.id)}
                 className="capitalize"
               >
@@ -209,6 +266,41 @@ export const MusicSearch: React.FC = () => {
           </div>
         </div>
 
+        {/* Recent searches */}
+        {recent.length > 0 && !query && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                <History className="h-3.5 w-3.5" />
+                Recent searches
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  clearRecentSearches();
+                  setRecent([]);
+                }}
+                className="h-6 px-2 text-xs text-muted-foreground"
+              >
+                Clear
+              </Button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {recent.map((term) => (
+                <button
+                  key={term}
+                  type="button"
+                  onClick={() => setQuery(term)}
+                  className="px-2 py-1 rounded-full bg-audio-control text-xs text-muted-foreground hover:text-foreground hover:bg-audio-active transition-smooth"
+                >
+                  {term}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {error && (
           <p className="text-xs text-destructive flex items-center gap-1.5">
             <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
@@ -216,10 +308,49 @@ export const MusicSearch: React.FC = () => {
           </p>
         )}
 
+        {/* Loading skeleton */}
+        {isSearching && results.length === 0 && (
+          <div className="space-y-2" aria-hidden>
+            {[0, 1, 2].map((index) => (
+              <div key={index} className="flex items-center gap-3 p-3 bg-audio-control/50 rounded-lg">
+                <div className="w-12 h-12 rounded-lg bg-audio-track animate-pulse" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-3 w-2/3 rounded bg-audio-track animate-pulse" />
+                  <div className="h-2.5 w-1/3 rounded bg-audio-track animate-pulse" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Search Results */}
         {results.length > 0 && (
           <div className="space-y-3">
-            <h4 className="text-sm font-medium text-muted-foreground">Search Results ({results.length})</h4>
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-medium text-muted-foreground">
+                Search Results ({results.length})
+              </h4>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setResults([]);
+                  setQuery('');
+                }}
+                className="h-6 px-2 text-xs text-muted-foreground"
+              >
+                <X className="h-3 w-3 mr-1" />
+                Clear
+              </Button>
+            </div>
+
+            {previewCount > 0 && (
+              <p className="text-xs text-muted-foreground flex items-start gap-1.5">
+                <Clock className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                {previewCount} of these are 30-90 second preview clips. Search YouTube for full tracks.
+              </p>
+            )}
+
             <div className="space-y-2 max-h-96 overflow-y-auto">
               {results.map((result, idx) => (
                 <div

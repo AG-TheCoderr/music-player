@@ -9,11 +9,12 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "node scripts/smoke-test.mjs && node scripts/audio-engine-test.mjs && node scripts/player-store-test.mjs && node scripts/preferences-test.mjs",
+    "test": "node scripts/smoke-test.mjs && node scripts/audio-engine-test.mjs && node scripts/player-store-test.mjs && node scripts/preferences-test.mjs && node scripts/edge-functions-test.mjs",
     "test:smoke": "node scripts/smoke-test.mjs",
     "test:audio": "node scripts/audio-engine-test.mjs",
     "test:store": "node scripts/player-store-test.mjs",
-    "test:prefs": "node scripts/preferences-test.mjs"
+    "test:prefs": "node scripts/preferences-test.mjs",
+    "test:edge": "node scripts/edge-functions-test.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

@@ -74,15 +74,100 @@ export function setupJsdom(html = '<!doctype html><html><body><div id="root"></d
     writable: true,
   });
 
-  global.HTMLElement = window.HTMLElement;
-  global.HTMLCanvasElement = window.HTMLCanvasElement;
-  global.Element = window.Element;
-  global.Node = window.Node;
-  global.Event = window.Event;
-  global.CustomEvent = window.CustomEvent;
-  global.MouseEvent = window.MouseEvent;
-  global.KeyboardEvent = window.KeyboardEvent;
+  // jsdom classes the bundle expects to find on the global scope. Anything Node already
+  // provides (URL, Blob, fetch, ...) is left alone so the platform is not degraded.
+  const DOM_GLOBALS = [
+    'Document',
+    'DocumentFragment',
+    'DOMParser',
+    'XMLSerializer',
+    'DOMRect',
+    'DOMPoint',
+    'DOMTokenList',
+    'NodeList',
+    'NodeFilter',
+    'Text',
+    'Range',
+    'Selection',
+    'Element',
+    'Node',
+    'Event',
+    'EventTarget',
+    'CustomEvent',
+    'MouseEvent',
+    'KeyboardEvent',
+    'FocusEvent',
+    'InputEvent',
+    'PointerEvent',
+    'WheelEvent',
+    'DragEvent',
+    'ClipboardEvent',
+    'TouchEvent',
+    'ErrorEvent',
+    'MutationObserver',
+    'IntersectionObserver',
+    'PerformanceObserver',
+    'ResizeObserver',
+    'CSS',
+    'Image',
+    'ImageData',
+    'Path2D',
+    'FileReader',
+    'FormData',
+    'SVGElement',
+    'SVGSVGElement',
+    'HTMLElement',
+    'HTMLCanvasElement',
+    'HTMLInputElement',
+    'HTMLButtonElement',
+    'HTMLAnchorElement',
+    'HTMLImageElement',
+    'HTMLFormElement',
+    'HTMLSelectElement',
+    'HTMLTextAreaElement',
+    'HTMLLabelElement',
+    'HTMLSpanElement',
+    'HTMLDivElement',
+    'HTMLUListElement',
+    'HTMLLIElement',
+    'HTMLMediaElement',
+    'HTMLAudioElement',
+    'HTMLVideoElement',
+    'HTMLIFrameElement',
+    'HTMLTableElement',
+    'HTMLTemplateElement',
+  ];
+
+  for (const name of DOM_GLOBALS) {
+    if (name in global) continue;
+    const value = window[name];
+    if (value !== undefined) global[name] = value;
+  }
+
+  // Node ships its own Event classes. jsdom refuses events that are not instances of *its*
+  // Event, so the DOM event classes always have to come from the window.
+  for (const name of [
+    'Event',
+    'EventTarget',
+    'CustomEvent',
+    'MouseEvent',
+    'KeyboardEvent',
+    'FocusEvent',
+    'InputEvent',
+    'PointerEvent',
+    'WheelEvent',
+    'DragEvent',
+    'ClipboardEvent',
+    'TouchEvent',
+    'ErrorEvent',
+  ]) {
+    if (window[name]) global[name] = window[name];
+  }
+
   global.getComputedStyle = window.getComputedStyle.bind(window);
+  if (typeof global.getSelection !== 'function') {
+    global.getSelection = () => window.getSelection();
+  }
 
   global.fetch = globalThis.fetch;
   global.Headers = globalThis.Headers;

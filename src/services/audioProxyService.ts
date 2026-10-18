@@ -1,5 +1,5 @@
 import { SUPABASE_URL } from '@/integrations/supabase/config';
-import { invokeEdgeFunction } from '@/services/edgeFunctions';
+import { invokeEdgeFunction, assertFunctionSucceeded } from '@/services/edgeFunctions';
 
 export interface SearchResult {
   id: string;
@@ -25,11 +25,13 @@ const SUPPORTED_PLATFORMS: SearchPlatform[] = ['all', 'youtube'];
 
 interface YoutubeSearchResponse {
   success: boolean;
+  error?: string;
   results?: SearchResult[];
 }
 
 interface AudioProxyResponse {
   success: boolean;
+  error?: string;
   results?: SearchResult[];
   streamUrl?: string;
   title?: string;
@@ -81,13 +83,22 @@ export class AudioProxyService {
         query,
         maxResults: 20,
       });
+      assertFunctionSucceeded(data);
       return data?.results ?? [];
     }
 
     // For 'all', merge the preview results with the YouTube results.
     const [baseResult, ytResult] = await Promise.allSettled([
-      invokeEdgeFunction<AudioProxyResponse>('audio-proxy', { action: 'search', query, platform: 'all' }),
-      invokeEdgeFunction<YoutubeSearchResponse>('youtube-search', { query, maxResults: 15 }),
+      invokeEdgeFunction<AudioProxyResponse>('audio-proxy', { action: 'search', query, platform: 'all' }).then(
+        (data) => {
+          assertFunctionSucceeded(data);
+          return data;
+        }
+      ),
+      invokeEdgeFunction<YoutubeSearchResponse>('youtube-search', { query, maxResults: 15 }).then((data) => {
+        assertFunctionSucceeded(data);
+        return data;
+      }),
     ]);
 
     const baseResults = baseResult.status === 'fulfilled' ? baseResult.value?.results ?? [] : [];
@@ -107,11 +118,12 @@ export class AudioProxyService {
       }
     }
 
-    // If both calls failed, surface the first real error instead of an empty result.
-    if (!merged.length && baseResult.status === 'rejected' && ytResult.status === 'rejected') {
-      throw baseResult.reason instanceof Error
-        ? baseResult.reason
-        : new Error('The search backend is unavailable. Please try again later.');
+    // An empty result set plus a failure must not look like "nothing matched".
+    if (!merged.length) {
+      const failure = baseResult.status === 'rejected' ? baseResult.reason : ytResult.status === 'rejected' ? ytResult.reason : null;
+      if (failure) {
+        throw failure instanceof Error ? failure : new Error('The search backend is unavailable. Please try again later.');
+      }
     }
 
     return merged;

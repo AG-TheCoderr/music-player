@@ -49,6 +49,15 @@ export const KeyboardShortcuts: React.FC<KeyboardShortcutsProps> = ({ tab, onTab
   const [showHelp, setShowHelp] = useState(false);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
+  // The key handler is registered once. The values it needs are read from a ref so the listener
+  // does not have to be torn down and re-added ten times a second while the track plays.
+  const latest = useRef({ currentTime, volume, isPlaying, showHelp });
+  const lastAudibleVolume = useRef<number | null>(null);
+
+  useEffect(() => {
+    latest.current = { currentTime, volume, isPlaying, showHelp };
+  }, [currentTime, volume, isPlaying, showHelp]);
+
   const toggleHelp = useCallback(() => {
     setShowHelp((previous) => !previous);
   }, []);
@@ -65,8 +74,9 @@ export const KeyboardShortcuts: React.FC<KeyboardShortcutsProps> = ({ tab, onTab
       if (isTypingTarget(event.target)) return;
 
       const key = event.key;
+      const { currentTime: time, volume: level, isPlaying: playing, showHelp: helpOpen } = latest.current;
 
-      if (key === 'Escape' && showHelp) {
+      if (key === 'Escape' && helpOpen) {
         event.preventDefault();
         setShowHelp(false);
         return;
@@ -77,46 +87,52 @@ export const KeyboardShortcuts: React.FC<KeyboardShortcutsProps> = ({ tab, onTab
         case 'k':
         case 'K': {
           event.preventDefault();
-          if (isPlaying) pause();
+          if (playing) pause();
           else play();
           return;
         }
         case 'ArrowLeft': {
           event.preventDefault();
-          seekTo(currentTime - 5);
+          seekTo(time - 5);
           return;
         }
         case 'ArrowRight': {
           event.preventDefault();
-          seekTo(currentTime + 5);
+          seekTo(time + 5);
           return;
         }
         case 'j':
         case 'J': {
           event.preventDefault();
-          seekTo(currentTime - 10);
+          seekTo(time - 10);
           return;
         }
         case 'l':
         case 'L': {
           event.preventDefault();
-          seekTo(currentTime + 10);
+          seekTo(time + 10);
           return;
         }
         case 'ArrowUp': {
           event.preventDefault();
-          setVolume(volume + 0.05);
+          setVolume(Math.min(1, level + 0.05));
           return;
         }
         case 'ArrowDown': {
           event.preventDefault();
-          setVolume(volume - 0.05);
+          setVolume(Math.max(0, level - 0.05));
           return;
         }
         case 'm':
         case 'M': {
           event.preventDefault();
-          setVolume(volume === 0 ? 0.7 : 0);
+          if (level > 0) {
+            // Remember the audible level so unmute restores it.
+            lastAudibleVolume.current = level;
+            setVolume(0);
+          } else {
+            setVolume(lastAudibleVolume.current ?? 0.7);
+          }
           return;
         }
         case 's':
@@ -162,22 +178,7 @@ export const KeyboardShortcuts: React.FC<KeyboardShortcutsProps> = ({ tab, onTab
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [
-    currentTime,
-    isPlaying,
-    nextTrack,
-    onTabChange,
-    pause,
-    play,
-    previousTrack,
-    seekTo,
-    setVolume,
-    showHelp,
-    toggleHelp,
-    toggleRepeat,
-    toggleShuffle,
-    volume,
-  ]);
+  }, [nextTrack, onTabChange, pause, play, previousTrack, seekTo, setVolume, toggleHelp, toggleRepeat, toggleShuffle]);
 
   return (
     <>

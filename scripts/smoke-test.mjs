@@ -89,6 +89,39 @@ const playlistCount = (doc.body.textContent || '').match(/Up Next\s*\((\d+)\)/)?
 const labelled = ['Toggle shuffle', 'Previous track', 'Next track', 'Repeat: none'];
 const hasLabelledControls = labelled.every((label) => doc.querySelector(`[aria-label="${label}"]`) !== null);
 
+// 6. keyboard shortcuts
+const pressKey = async (key, target) => {
+  const node = target ?? doc.body;
+  node.dispatchEvent(new window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+  await new Promise((resolve) => setTimeout(resolve, 120));
+};
+
+const activeTab = () => doc.querySelector('button[role="tab"][data-state="active"]')?.textContent?.trim();
+
+await pressKey('2');
+const numberKeySwitchedTab = activeTab() === 'Equalizer';
+
+// Back to the player - the volume slider only exists while that tab is mounted.
+await pressKey('1');
+const numberKeySwitchedBack = activeTab() === 'Player';
+
+await pressKey('?');
+const helpOpened = doc.querySelector('[role="dialog"][aria-label="Keyboard shortcuts"]') !== null;
+await pressKey('Escape');
+const helpClosed = doc.querySelector('[role="dialog"][aria-label="Keyboard shortcuts"]') === null;
+
+const volumeThumb = () => doc.querySelector('[role="slider"][aria-label="Volume"]');
+const volumeBefore = volumeThumb()?.getAttribute('aria-valuenow');
+await pressKey('m');
+const volumeMuted = volumeThumb()?.getAttribute('aria-valuenow');
+await pressKey('m');
+const volumeRestored = volumeThumb()?.getAttribute('aria-valuenow');
+
+// Shortcuts must not fire while the user is typing.
+const searchInput = doc.querySelector('input[placeholder*="Search for songs"]');
+await pressKey('2', searchInput);
+const typingDidNotSwitchTab = activeTab() === 'Player';
+
 const body = doc.body.textContent || '';
 const html = doc.body.innerHTML;
 
@@ -114,6 +147,14 @@ const checks = [
   ['demo track added to playlist', playlistHasTrack],
   ['playlist counter updated', playlistCount === '1'],
   ['transport controls are labelled', hasLabelledControls],
+  ['a number key switches tab', numberKeySwitchedTab],
+  ['a number key switches back', numberKeySwitchedBack],
+  ['the help overlay opens', helpOpened],
+  ['escape closes the help overlay', helpClosed],
+  ['m mutes', volumeBefore !== '0' && volumeMuted === '0'],
+  ['m unmutes back to the previous level', volumeRestored === volumeBefore],
+  ['shortcuts are ignored while typing', typingDidNotSwitchTab],
+  ['the volume slider is labelled', volumeThumb() !== null],
   ['no runtime errors', errors.length === 0],
 ];
 

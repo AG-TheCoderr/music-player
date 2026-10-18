@@ -68,8 +68,21 @@ export const PlayerControls: React.FC = () => {
       {/* Track Info */}
       {currentTrack && (
         <div className="flex items-center space-x-4">
-          <div className="w-16 h-16 bg-gradient-primary rounded-lg flex items-center justify-center animate-spin-slow">
-            <div className="w-4 h-4 bg-background rounded-full" />
+          <div className="w-16 h-16 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0 bg-gradient-primary">
+            {currentTrack.artwork ? (
+              <img
+                src={currentTrack.artwork}
+                alt={`${currentTrack.title} cover art`}
+                className="w-full h-full object-cover"
+                loading="lazy"
+                decoding="async"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <div className="w-16 h-16 bg-gradient-primary rounded-lg flex items-center justify-center animate-spin-slow">
+                <div className="w-4 h-4 bg-background rounded-full" />
+              </div>
+            )}
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
@@ -189,6 +202,8 @@ export const PlayerControls: React.FC = () => {
           max={100}
           step={1}
           onValueChange={handleVolumeChange}
+          thumbAriaLabel="Volume"
+          thumbAriaValueText={`${Math.round(volume * 100)}%`}
           className="flex-1"
         />
         <span className="text-xs text-muted-foreground w-8 text-right">{Math.round(volume * 100)}%</span>
