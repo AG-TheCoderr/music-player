@@ -199,6 +199,35 @@ export function setupJsdom(html = '<!doctype html><html><body><div id="root"></d
   window.ResizeObserver = ResizeObserverStub;
   global.ResizeObserver = ResizeObserverStub;
 
+  // jsdom has no Path2D either - the visualiser builds its bar path with one.
+  if (!window.Path2D) {
+    class Path2DStub {
+      constructor() {
+        this.parts = [];
+      }
+      roundRect(...args) {
+        this.parts.push(['roundRect', args]);
+      }
+      rect(...args) {
+        this.parts.push(['rect', args]);
+      }
+      moveTo(...args) {
+        this.parts.push(['moveTo', args]);
+      }
+      lineTo(...args) {
+        this.parts.push(['lineTo', args]);
+      }
+      arc(...args) {
+        this.parts.push(['arc', args]);
+      }
+      closePath() {
+        this.parts.push(['closePath', []]);
+      }
+    }
+    window.Path2D = Path2DStub;
+    global.Path2D = Path2DStub;
+  }
+
   // jsdom has no canvas backend - hand out an inert 2d context.
   window.HTMLCanvasElement.prototype.getContext = function getContext() {
     if (!this.__context) {

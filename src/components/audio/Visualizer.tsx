@@ -49,7 +49,11 @@ export const Visualizer: React.FC<VisualizerProps> = ({
 
     ctx.clearRect(0, 0, cssWidth, cssHeight);
 
-    if (frequencyData.length === 0) {
+    // Nothing to show while there is no signal at all.
+    const isSilent =
+      frequencyData.length === 0 || frequencyData.every((value) => value <= 1);
+
+    if (isSilent) {
       drawIdle(ctx, cssWidth, cssHeight, resolvedColor);
     } else {
       switch (type) {
@@ -153,6 +157,32 @@ function drawIdle(
   ctx.stroke();
 }
 
+/**
+ * The gradient only depends on the size and the colour, so it is cached instead of being
+ * rebuilt on every frame.
+ */
+let barGradient: CanvasGradient | null = null;
+let barGradientKey = '';
+
+function getBarGradient(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  resolvedColor: string
+): CanvasGradient {
+  const key = `${width}x${height}:${resolvedColor}`;
+  if (barGradient && barGradientKey === key) return barGradient;
+
+  const gradient = ctx.createLinearGradient(0, height, 0, 0);
+  gradient.addColorStop(0, createColorWithAlpha(resolvedColor, 0.25));
+  gradient.addColorStop(0.5, createColorWithAlpha(resolvedColor, 0.5));
+  gradient.addColorStop(1, resolvedColor);
+
+  barGradient = gradient;
+  barGradientKey = key;
+  return gradient;
+}
+
 function drawBars(
   ctx: CanvasRenderingContext2D,
   frequencyData: Uint8Array,
@@ -164,29 +194,28 @@ function drawBars(
   const barWidth = width / barCount;
   const step = Math.max(1, Math.floor(frequencyData.length / barCount));
 
-  const gradient = ctx.createLinearGradient(0, height, 0, 0);
-  gradient.addColorStop(0, createColorWithAlpha(resolvedColor, 0.25));
-  gradient.addColorStop(0.5, createColorWithAlpha(resolvedColor, 0.5));
-  gradient.addColorStop(1, resolvedColor);
-
-  ctx.fillStyle = gradient;
-
+  // All bars are collected in a single path. Filling that path once with a shadow costs one
+  // blur pass instead of one per bar, which is the difference between a smooth visualiser and
+  // a stuttering one on a slow device.
+  const path = new Path2D();
   for (let i = 0; i < barCount; i++) {
     const barHeight = (frequencyData[i * step] / 255) * height;
     const x = i * barWidth;
     const y = height - barHeight;
-
-    // Draw bar with rounded top
-    ctx.beginPath();
-    ctx.roundRect(x + 1, y, barWidth - 2, barHeight, [2, 2, 0, 0]);
-    ctx.fill();
-
-    // Add glow effect
-    ctx.shadowColor = resolvedColor;
-    ctx.shadowBlur = 10;
-    ctx.fill();
-    ctx.shadowBlur = 0;
+    path.roundRect(x + 1, y, Math.max(0, barWidth - 2), barHeight, [2, 2, 0, 0]);
   }
+
+  // The glow.
+  ctx.save();
+  ctx.shadowColor = resolvedColor;
+  ctx.shadowBlur = 10;
+  ctx.fillStyle = resolvedColor;
+  ctx.fill(path);
+  ctx.restore();
+
+  // The bar itself.
+  ctx.fillStyle = getBarGradient(ctx, width, height, resolvedColor);
+  ctx.fill(path);
 }
 
 function drawWave(
@@ -198,7 +227,10 @@ function drawWave(
 ) {
   if (timeDomainData.length === 0) return;
 
-  const sliceWidth = width / timeDomainData.length;
+  // Two samples per pixel is enough - drawing all 1024 of them on a 300 pixel canvas only
+  // costs time.
+  const step = Math.max(1, Math.floor(timeDomainData.length / Math.max(1, width * 2)));
+  const sliceWidth = width / (timeDomainData.length / step);
 
   const gradient = ctx.createLinearGradient(0, 0, width, 0);
   gradient.addColorStop(0, createColorWithAlpha(resolvedColor, 0.4));
@@ -210,7 +242,7 @@ function drawWave(
   ctx.beginPath();
 
   let x = 0;
-  for (let i = 0; i < timeDomainData.length; i++) {
+  for (let i = 0; i < timeDomainData.length; i += step) {
     const v = timeDomainData[i] / 128.0;
     const y = (v * height) / 2;
 
