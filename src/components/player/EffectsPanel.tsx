@@ -5,10 +5,11 @@ import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { useAudioPlayer } from '../audio/AudioPlayerProvider';
+import { usePlayerActions, usePlayerSelector } from '../audio/AudioPlayerProvider';
 
 export const EffectsPanel: React.FC = () => {
-  const { effects, updateEffects } = useAudioPlayer();
+  const { updateEffects } = usePlayerActions();
+  const effects = usePlayerSelector((state) => state.effects);
 
   const updateReverb = (key: keyof typeof effects.reverb, value: number) => {
     updateEffects({

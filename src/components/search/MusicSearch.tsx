@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Search, Play, Plus, Music, Loader2, AlertTriangle } from 'lucide-react';
 import { AudioProxyService } from '@/services/audioProxyService';
-import { useAudioPlayer } from '@/components/audio/AudioPlayerProvider';
+import { usePlayerActions } from '@/components/audio/AudioPlayerProvider';
 import { useToast } from '@/hooks/use-toast';
 
 interface SearchResult {
@@ -34,7 +34,7 @@ export const MusicSearch: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [selectedPlatform, setSelectedPlatform] = useState<Platform>('all');
 
-  const { loadTrack, addToPlaylist, loadYouTube } = useAudioPlayer();
+  const { loadTrack, addToPlaylist, loadYouTube } = usePlayerActions();
   const { toast } = useToast();
 
   const handleSearch = async () => {

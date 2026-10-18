@@ -3,7 +3,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useAudioPlayer } from '../audio/AudioPlayerProvider';
+import { usePlayerActions, usePlayerSelector } from '../audio/AudioPlayerProvider';
 
 const frequencies = ['32Hz', '64Hz', '125Hz', '250Hz', '500Hz', '1kHz', '2kHz', '4kHz', '8kHz', '16kHz'];
 
@@ -21,7 +21,9 @@ const presetLabels: Record<string, string> = {
 };
 
 export const Equalizer: React.FC = () => {
-  const { equalizerBands, equalizerPreset, setEqualizerBand, setEqualizerPreset } = useAudioPlayer();
+  const { setEqualizerBand, setEqualizerPreset } = usePlayerActions();
+  const equalizerBands = usePlayerSelector((state) => state.equalizerBands);
+  const equalizerPreset = usePlayerSelector((state) => state.equalizerPreset);
 
   const handleBandChange = (index: number, value: number[]) => {
     setEqualizerBand(index, value[0]);

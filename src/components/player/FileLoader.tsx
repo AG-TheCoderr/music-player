@@ -4,13 +4,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Upload, Link, Music, FileAudio } from 'lucide-react';
-import { useAudioPlayer } from '../audio/AudioPlayerProvider';
+import { usePlayerActions, usePlayerSelector } from '../audio/AudioPlayerProvider';
 import { useToast } from '@/hooks/use-toast';
 import { AudioProxyService } from '@/services/audioProxyService';
 import { YouTubeController } from '@/services/youtubeController';
 
 export const FileLoader: React.FC = () => {
-  const { loadTrack, addToPlaylist, loadYouTube, currentTrack } = useAudioPlayer();
+  const { loadTrack, addToPlaylist, loadYouTube } = usePlayerActions();
+  const currentTrack = usePlayerSelector((state) => state.currentTrack);
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [urlInput, setUrlInput] = useState('');

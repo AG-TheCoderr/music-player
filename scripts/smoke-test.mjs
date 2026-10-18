@@ -5,10 +5,10 @@
  *   node scripts/smoke-test.mjs
  */
 import { build } from 'esbuild';
-import { JSDOM } from 'jsdom';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import fs from 'node:fs';
+import { setupJsdom, captureErrors } from './jsdom-env.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const outfile = path.join(root, 'node_modules', '.smoke', 'app.js');
@@ -32,68 +32,8 @@ await build({
   logLevel: 'error',
 });
 
-const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
-  url: 'http://localhost:8080/',
-  pretendToBeVisual: true,
-});
-
-const { window } = dom;
-global.window = window;
-global.document = window.document;
-Object.defineProperty(global, 'navigator', { value: window.navigator, configurable: true, writable: true });
-global.HTMLElement = window.HTMLElement;
-global.Element = window.Element;
-global.Node = window.Node;
-global.Event = window.Event;
-global.CustomEvent = window.CustomEvent;
-global.MouseEvent = window.MouseEvent;
-global.getComputedStyle = window.getComputedStyle.bind(window);
-
-// jsdom does not implement matchMedia - Radix UI relies on it.
-window.matchMedia = (query) => ({
-  matches: false,
-  media: query,
-  onchange: null,
-  addListener: () => {},
-  removeListener: () => {},
-  addEventListener: () => {},
-  removeEventListener: () => {},
-  dispatchEvent: () => false,
-});
-global.matchMedia = window.matchMedia;
-
-// jsdom has no ResizeObserver - Radix sliders rely on it.
-class ResizeObserverStub {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-}
-window.ResizeObserver = ResizeObserverStub;
-global.ResizeObserver = ResizeObserverStub;
-window.DOMRect = window.DOMRect || class DOMRect {
-  constructor(x = 0, y = 0, width = 0, height = 0) {
-    Object.assign(this, { x, y, width, height, top: y, left: x, right: x + width, bottom: y + height });
-  }
-};
-global.DOMRect = window.DOMRect;
-global.fetch = globalThis.fetch;
-global.Headers = globalThis.Headers;
-global.Request = globalThis.Request;
-global.Response = globalThis.Response;
-window.fetch = globalThis.fetch;
-window.Headers = globalThis.Headers;
-window.Request = globalThis.Request;
-window.Response = globalThis.Response;
-global.requestAnimationFrame = (cb) => window.setTimeout(() => cb(Date.now()), 16);
-global.cancelAnimationFrame = (id) => window.clearTimeout(id);
-global.localStorage = window.localStorage;
-
-const errors = [];
-const origError = console.error;
-console.error = (...args) => {
-  errors.push(args.map(String).join(' '));
-  origError(...args);
-};
+const { window } = setupJsdom();
+const errors = captureErrors();
 
 window.addEventListener('error', (e) => errors.push(`window error: ${e.message}`));
 

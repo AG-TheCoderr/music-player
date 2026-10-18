@@ -203,8 +203,7 @@ const hasEdge = (fromKind, toKind) => edges.some(([from, to]) => from.kind === f
 const checks = [
   ['source feeds the first EQ band', sourceNode.out.includes(engine.equalizerNodes[0])],
   ['EQ bands are chained', hasEdge('biquad', 'biquad')],
-  ['EQ feeds the compressor', hasEdge('biquad', 'compressor')],
-  ['compressor feeds the distortion', hasEdge('compressor', 'waveshaper')],
+  ['EQ feeds the distortion', hasEdge('biquad', 'waveshaper')],
   ['distortion feeds the chorus input', hasEdge('waveshaper', 'gain')],
   ['chorus dry path is connected', edges.some(([from, to]) => from.kind === 'gain' && to.kind === 'gain')],
   ['chorus delay is connected', hasEdge('gain', 'delay')],
@@ -212,6 +211,8 @@ const checks = [
   ['LFO is connected to the chorus depth gain', engine.chorusLfo.out.includes(engine.chorusLfoDepth)],
   ['LFO modulates the chorus delay time', engine.chorusLfoDepth.out.includes(engine.chorusDelay.delayTime)],
   ['reverb convolver is connected', hasEdge('gain', 'convolver')],
+  ['reverb feeds the compressor', hasEdge('gain', 'compressor')],
+  ['compressor feeds the master gain', hasEdge('compressor', 'gain')],
   ['master gain reaches the analyser', hasEdge('gain', 'analyser')],
   ['analyser reaches the destination', hasEdge('analyser', 'destination')],
 ];

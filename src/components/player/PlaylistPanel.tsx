@@ -1,5 +1,5 @@
 import React from 'react';
-import { useAudioPlayer, Track } from '../audio/AudioPlayerProvider';
+import { usePlayerActions, usePlayerSelector, Track } from '../audio/AudioPlayerProvider';
 import {
   DndContext,
   closestCenter,
@@ -35,7 +35,7 @@ const SortableTrackItem: React.FC<{ track: Track; index: number; isCurrent: bool
   isCurrent,
   isPlaying,
 }) => {
-  const { playTrackAtIndex, removeFromPlaylist } = useAudioPlayer();
+  const { playTrackAtIndex, removeFromPlaylist } = usePlayerActions();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: track.id });
 
   const style = {
@@ -102,7 +102,11 @@ const SortableTrackItem: React.FC<{ track: Track; index: number; isCurrent: bool
 };
 
 export const PlaylistPanel = () => {
-  const { playlist, currentTrack, currentTrackIndex, isPlaying, reorderPlaylist, clearPlaylist } = useAudioPlayer();
+  const { playTrackAtIndex, removeFromPlaylist, reorderPlaylist, clearPlaylist } = usePlayerActions();
+  const playlist = usePlayerSelector((state) => state.playlist);
+  const currentTrack = usePlayerSelector((state) => state.currentTrack);
+  const currentTrackIndex = usePlayerSelector((state) => state.currentTrackIndex);
+  const isPlaying = usePlayerSelector((state) => state.isPlaying);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),

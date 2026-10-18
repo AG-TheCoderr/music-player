@@ -3,7 +3,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Mic, Music2, Volume2, Zap } from 'lucide-react';
-import { useAudioPlayer } from '../audio/AudioPlayerProvider';
+import { usePlayerActions, usePlayerSelector } from '../audio/AudioPlayerProvider';
 import { cn } from '@/lib/utils';
 
 const modes = [
@@ -38,7 +38,8 @@ const modes = [
 ];
 
 export const ModeSelector: React.FC = () => {
-  const { mode, setMode } = useAudioPlayer();
+  const { setMode } = usePlayerActions();
+  const mode = usePlayerSelector((state) => state.mode);
 
   return (
     <Card className="p-6 bg-gradient-surface border-audio-control">

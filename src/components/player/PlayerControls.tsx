@@ -13,20 +13,11 @@ import {
   Shuffle,
   Loader2,
 } from 'lucide-react';
-import { useAudioPlayer } from '../audio/AudioPlayerProvider';
+import { usePlayerActions, usePlayerSelector } from '../audio/AudioPlayerProvider';
 import { cn } from '@/lib/utils';
 
 export const PlayerControls: React.FC = () => {
   const {
-    isPlaying,
-    isLoading,
-    currentTrack,
-    externalSource,
-    volume,
-    currentTime,
-    duration,
-    repeatMode,
-    isShuffled,
     play,
     pause,
     nextTrack,
@@ -35,7 +26,19 @@ export const PlayerControls: React.FC = () => {
     seekTo,
     toggleRepeat,
     toggleShuffle,
-  } = useAudioPlayer();
+  } = usePlayerActions();
+
+  // Narrow subscriptions: the playback position ticks ten times a second, so only the
+  // components that actually show it re-render.
+  const isPlaying = usePlayerSelector((state) => state.isPlaying);
+  const isLoading = usePlayerSelector((state) => state.isLoading);
+  const currentTrack = usePlayerSelector((state) => state.currentTrack);
+  const externalSource = usePlayerSelector((state) => state.externalSource);
+  const volume = usePlayerSelector((state) => state.volume);
+  const currentTime = usePlayerSelector((state) => state.currentTime);
+  const duration = usePlayerSelector((state) => state.duration);
+  const repeatMode = usePlayerSelector((state) => state.repeatMode);
+  const isShuffled = usePlayerSelector((state) => state.isShuffled);
 
   const formatTime = (time: number): string => {
     if (!Number.isFinite(time) || time < 0) time = 0;

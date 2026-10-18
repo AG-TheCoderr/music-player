@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useCallback } from 'react';
-import { useAudioPlayer } from './AudioPlayerProvider';
+import { usePlayerActions, usePlayerSelector } from './AudioPlayerProvider';
 import { getResolvedCSSColor, createColorWithAlpha } from '@/utils/colorUtils';
 
 interface VisualizerProps {
@@ -19,11 +19,21 @@ export const Visualizer: React.FC<VisualizerProps> = ({
   className = '',
   barCount = 64,
   color = 'hsl(var(--primary))',
-  responsive = true
+  responsive = true,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>();
-  const { getFrequencyData, getTimeDomainData, isPlaying } = useAudioPlayer();
+  /** CSS pixel size of the canvas - the backing store is scaled by the device pixel ratio. */
+  const sizeRef = useRef({ width, height });
+  const { getFrequencyData, getTimeDomainData } = usePlayerActions();
+  const isPlaying = usePlayerSelector((state) => state.isPlaying);
+
+  // Resolving the colour means reading a computed style - doing that every frame would
+  // force a layout, so it is resolved once and only refreshed when the prop changes.
+  const resolvedColorRef = useRef(getResolvedCSSColor(color));
+  useEffect(() => {
+    resolvedColorRef.current = getResolvedCSSColor(color);
+  }, [color]);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -32,38 +42,40 @@ export const Visualizer: React.FC<VisualizerProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    const resolvedColor = resolvedColorRef.current;
     const frequencyData = getFrequencyData();
     const timeDomainData = getTimeDomainData();
+    const { width: cssWidth, height: cssHeight } = sizeRef.current;
 
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, cssWidth, cssHeight);
 
-    if (frequencyData.length === 0) return;
-
-    switch (type) {
-      case 'bars':
-        drawBars(ctx, frequencyData, canvas.width, canvas.height, barCount, color);
-        break;
-      case 'wave':
-        drawWave(ctx, timeDomainData, canvas.width, canvas.height, color);
-        break;
-      case 'circular':
-        drawCircular(ctx, frequencyData, canvas.width, canvas.height, color);
-        break;
+    if (frequencyData.length === 0) {
+      drawIdle(ctx, cssWidth, cssHeight, resolvedColor);
+    } else {
+      switch (type) {
+        case 'bars':
+          drawBars(ctx, frequencyData, cssWidth, cssHeight, barCount, resolvedColor);
+          break;
+        case 'wave':
+          drawWave(ctx, timeDomainData, cssWidth, cssHeight, resolvedColor);
+          break;
+        case 'circular':
+          drawCircular(ctx, frequencyData, cssWidth, cssHeight, resolvedColor);
+          break;
+      }
     }
 
     if (isPlaying) {
       animationRef.current = requestAnimationFrame(draw);
     }
-  }, [getFrequencyData, getTimeDomainData, isPlaying, type, barCount, color]);
+  }, [getFrequencyData, getTimeDomainData, isPlaying, type, barCount]);
 
   useEffect(() => {
     if (isPlaying) {
       animationRef.current = requestAnimationFrame(draw);
     } else {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
+      // Draw the final (or idle) frame once so the canvas is never blank.
+      draw();
     }
 
     return () => {
@@ -73,23 +85,47 @@ export const Visualizer: React.FC<VisualizerProps> = ({
     };
   }, [isPlaying, draw]);
 
-  // Handle responsive canvas
+  // Keep the canvas in sync with its container, including device pixel ratio.
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !responsive) return;
+    if (!canvas) return;
 
-    const resizeCanvas = () => {
-      const container = canvas.parentElement;
-      if (container) {
-        canvas.width = container.clientWidth;
-        canvas.height = container.clientHeight;
-      }
+    const applySize = () => {
+      const ratio = Math.min(window.devicePixelRatio || 1, 2);
+      const cssWidth = responsive ? canvas.parentElement?.clientWidth ?? width : width;
+      const cssHeight = responsive ? canvas.parentElement?.clientHeight ?? height : height;
+
+      if (!cssWidth || !cssHeight) return;
+
+      sizeRef.current = { width: cssWidth, height: cssHeight };
+
+      // The backing store uses device pixels, the drawing code stays in CSS pixels.
+      canvas.width = Math.floor(cssWidth * ratio);
+      canvas.height = Math.floor(cssHeight * ratio);
+
+      const ctx = canvas.getContext('2d');
+      ctx?.setTransform(ratio, 0, 0, ratio, 0, 0);
+
+      canvas.style.width = responsive ? '100%' : `${width}px`;
+      canvas.style.height = responsive ? '100%' : `${height}px`;
     };
 
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
-    return () => window.removeEventListener('resize', resizeCanvas);
-  }, [responsive]);
+    applySize();
+
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', applySize);
+      return () => window.removeEventListener('resize', applySize);
+    }
+
+    const observer = new ResizeObserver(() => applySize());
+    if (canvas.parentElement) observer.observe(canvas.parentElement);
+    window.addEventListener('resize', applySize);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', applySize);
+    };
+  }, [responsive, width, height]);
 
   return (
     <canvas
@@ -102,19 +138,32 @@ export const Visualizer: React.FC<VisualizerProps> = ({
   );
 };
 
+/** A flat line shown when there is no audio signal. */
+function drawIdle(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  color: string
+) {
+  ctx.strokeStyle = createColorWithAlpha(color, 0.25);
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, height / 2);
+  ctx.lineTo(width, height / 2);
+  ctx.stroke();
+}
+
 function drawBars(
   ctx: CanvasRenderingContext2D,
   frequencyData: Uint8Array,
   width: number,
   height: number,
   barCount: number,
-  color: string
+  resolvedColor: string
 ) {
   const barWidth = width / barCount;
-  const step = Math.floor(frequencyData.length / barCount);
+  const step = Math.max(1, Math.floor(frequencyData.length / barCount));
 
-  // Resolve color and create gradient
-  const resolvedColor = getResolvedCSSColor(color);
   const gradient = ctx.createLinearGradient(0, height, 0, 0);
   gradient.addColorStop(0, createColorWithAlpha(resolvedColor, 0.25));
   gradient.addColorStop(0.5, createColorWithAlpha(resolvedColor, 0.5));
@@ -145,13 +194,12 @@ function drawWave(
   timeDomainData: Uint8Array,
   width: number,
   height: number,
-  color: string
+  resolvedColor: string
 ) {
-  const sliceWidth = width / timeDomainData.length;
-  let x = 0;
+  if (timeDomainData.length === 0) return;
 
-  // Resolve color and create gradient stroke
-  const resolvedColor = getResolvedCSSColor(color);
+  const sliceWidth = width / timeDomainData.length;
+
   const gradient = ctx.createLinearGradient(0, 0, width, 0);
   gradient.addColorStop(0, createColorWithAlpha(resolvedColor, 0.4));
   gradient.addColorStop(0.5, resolvedColor);
@@ -159,31 +207,22 @@ function drawWave(
 
   ctx.strokeStyle = gradient;
   ctx.lineWidth = 2;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-
   ctx.beginPath();
 
+  let x = 0;
   for (let i = 0; i < timeDomainData.length; i++) {
     const v = timeDomainData[i] / 128.0;
-    const y = v * height / 2;
+    const y = (v * height) / 2;
 
     if (i === 0) {
       ctx.moveTo(x, y);
     } else {
       ctx.lineTo(x, y);
     }
-
     x += sliceWidth;
   }
 
   ctx.stroke();
-
-  // Add glow effect
-  ctx.shadowColor = resolvedColor;
-  ctx.shadowBlur = 5;
-  ctx.stroke();
-  ctx.shadowBlur = 0;
 }
 
 function drawCircular(
@@ -191,43 +230,39 @@ function drawCircular(
   frequencyData: Uint8Array,
   width: number,
   height: number,
-  color: string
+  resolvedColor: string
 ) {
   const centerX = width / 2;
   const centerY = height / 2;
-  const radius = Math.min(centerX, centerY) * 0.4;
-  const barCount = 64;
-  const step = Math.floor(frequencyData.length / barCount);
+  const radius = Math.min(width, height) / 2 - 10;
 
-  // Resolve color and create radial gradient
-  const resolvedColor = getResolvedCSSColor(color);
-  const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius * 2);
-  gradient.addColorStop(0, createColorWithAlpha(resolvedColor, 0.1));
-  gradient.addColorStop(0.7, createColorWithAlpha(resolvedColor, 0.4));
-  gradient.addColorStop(1, resolvedColor);
+  ctx.strokeStyle = createColorWithAlpha(resolvedColor, 0.5);
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+  ctx.stroke();
 
-  ctx.fillStyle = gradient;
+  const step = Math.max(1, Math.floor(frequencyData.length / 64));
 
-  for (let i = 0; i < barCount; i++) {
-    const angle = (i / barCount) * Math.PI * 2;
-    const barHeight = (frequencyData[i * step] / 255) * radius;
-    
-    const startX = centerX + Math.cos(angle) * radius;
-    const startY = centerY + Math.sin(angle) * radius;
-    const endX = centerX + Math.cos(angle) * (radius + barHeight);
-    const endY = centerY + Math.sin(angle) * (radius + barHeight);
+  ctx.strokeStyle = resolvedColor;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
 
-    ctx.beginPath();
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = gradient;
-    ctx.moveTo(startX, startY);
-    ctx.lineTo(endX, endY);
-    ctx.stroke();
+  for (let i = 0; i < 64; i++) {
+    const value = frequencyData[i * step] / 255;
+    const angle = (i / 64) * Math.PI * 2 - Math.PI / 2;
+    const r = radius * (0.3 + value * 0.7);
+
+    const x = centerX + Math.cos(angle) * r;
+    const y = centerY + Math.sin(angle) * r;
+
+    if (i === 0) {
+      ctx.moveTo(x, y);
+    } else {
+      ctx.lineTo(x, y);
+    }
   }
 
-  // Draw center circle
-  ctx.beginPath();
-  ctx.arc(centerX, centerY, radius * 0.3, 0, Math.PI * 2);
-  ctx.fillStyle = createColorWithAlpha(resolvedColor, 0.25);
-  ctx.fill();
+  ctx.closePath();
+  ctx.stroke();
 }

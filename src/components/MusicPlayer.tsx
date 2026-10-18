@@ -1,19 +1,30 @@
-import React from 'react';
+import React, { Suspense, lazy, useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { AudioPlayerProvider, useAudioPlayer } from './audio/AudioPlayerProvider';
+import { AudioPlayerProvider, usePlayerActions, usePlayerSelector } from './audio/AudioPlayerProvider';
 import { PlayerControls } from './player/PlayerControls';
-import { Equalizer } from './player/Equalizer';
-import { EffectsPanel } from './player/EffectsPanel';
 import { FileLoader } from './player/FileLoader';
 import { ModeSelector } from './player/ModeSelector';
 import { Visualizer } from './audio/Visualizer';
 import { MusicSearch } from './search/MusicSearch';
-import { PlaylistPanel } from './player/PlaylistPanel';
 import { YouTubePane } from './player/YouTubePane';
+import { KeyboardShortcuts } from './player/KeyboardShortcuts';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Headphones, Settings, Upload, BarChart3, AlertTriangle, X } from 'lucide-react';
+
+// Heavy panels are split out of the initial bundle.
+const Equalizer = lazy(() => import('./player/Equalizer').then((m) => ({ default: m.Equalizer })));
+const EffectsPanel = lazy(() => import('./player/EffectsPanel').then((m) => ({ default: m.EffectsPanel })));
+const PlaylistPanel = lazy(() =>
+  import('./player/PlaylistPanel').then((m) => ({ default: m.PlaylistPanel }))
+);
+
+const PanelFallback = () => (
+  <Card className="p-6 bg-gradient-surface border-audio-control">
+    <div className="h-32 animate-pulse rounded bg-audio-track" />
+  </Card>
+);
 
 const AUDIO_EXTENSIONS: Record<string, string> = {
   mp3: 'MP3',
@@ -55,8 +66,15 @@ const formatDuration = (seconds: number): string => {
 };
 
 const MusicPlayerContent: React.FC = () => {
-  const { equalizerBands, currentTrack, duration, audioInfo, externalSource, error, dismissError, isLoading } =
-    useAudioPlayer();
+  const [tab, setTab] = useState('player');
+  const { dismissError } = usePlayerActions();
+  const equalizerBands = usePlayerSelector((state) => state.equalizerBands);
+  const currentTrack = usePlayerSelector((state) => state.currentTrack);
+  const duration = usePlayerSelector((state) => state.duration);
+  const audioInfo = usePlayerSelector((state) => state.audioInfo);
+  const externalSource = usePlayerSelector((state) => state.externalSource);
+  const error = usePlayerSelector((state) => state.error);
+  const isLoading = usePlayerSelector((state) => state.isLoading);
 
   return (
     <div className="min-h-screen bg-background p-4 space-y-6">
@@ -70,7 +88,10 @@ const MusicPlayerContent: React.FC = () => {
             Pro Audio Player
           </h1>
         </div>
-        <p className="text-muted-foreground">Professional music player with advanced audio processing</p>
+        <div className="flex items-center justify-center gap-3">
+          <p className="text-muted-foreground">Professional music player with advanced audio processing</p>
+          <KeyboardShortcuts tab={tab} onTabChange={setTab} />
+        </div>
         <div className="flex items-center justify-center space-x-2 flex-wrap">
           <Badge variant="outline" className="bg-primary/10 border-primary/20">
             <BarChart3 className="w-3 h-3 mr-1" />
@@ -102,7 +123,7 @@ const MusicPlayerContent: React.FC = () => {
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto">
-        <Tabs defaultValue="player" className="w-full">
+        <Tabs value={tab} onValueChange={setTab} className="w-full">
           <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 mb-6 bg-audio-surface border border-audio-control">
             <TabsTrigger value="player" className="data-[state=active]:bg-gradient-primary">
               Player
@@ -230,20 +251,26 @@ const MusicPlayerContent: React.FC = () => {
                   </div>
                 </Card>
 
-                <PlaylistPanel />
+                <Suspense fallback={<PanelFallback />}>
+                  <PlaylistPanel />
+                </Suspense>
               </div>
             </div>
           </TabsContent>
 
           <TabsContent value="equalizer">
             <div className="rainbow-border p-6 bg-gradient-surface border-audio-control rounded-lg">
-              <Equalizer />
+              <Suspense fallback={<PanelFallback />}>
+                <Equalizer />
+              </Suspense>
             </div>
           </TabsContent>
 
           <TabsContent value="effects">
             <div className="rainbow-border p-6 bg-gradient-surface border-audio-control rounded-lg">
-              <EffectsPanel />
+              <Suspense fallback={<PanelFallback />}>
+                <EffectsPanel />
+              </Suspense>
             </div>
           </TabsContent>
 

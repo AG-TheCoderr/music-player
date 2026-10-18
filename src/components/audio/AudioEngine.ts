@@ -48,12 +48,16 @@ export interface AudioEngineInfo {
 
 const EQ_FREQUENCIES = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
 
+/** Shared empty buffer returned when no analyser is available. */
+const EMPTY_DATA = new Uint8Array(0);
+
 /**
  * Web Audio graph:
  *
- *   source -> EQ(10 band) -> compressor -> distortion
+ *   source -> EQ(10 band) -> distortion
  *          -> chorus (dry/wet + LFO modulated delay)
  *          -> reverb (dry/wet + convolver)
+ *          -> compressor (glue / safety limiter)
  *          -> master gain -> analyser -> destination
  */
 export class AudioEngine {
@@ -89,6 +93,9 @@ export class AudioEngine {
   private reverbRegenTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingReverb: { roomSize: number; damping: number } | null = null;
   private lastReverbParams = { roomSize: -1, damping: -1 };
+
+  private frequencyBuffer: Uint8Array | null = null;
+  private timeDomainBuffer: Uint8Array | null = null;
 
   private endedHandler: (() => void) | null = null;
   private errorHandler: ((error: Error) => void) | null = null;
@@ -185,12 +192,6 @@ export class AudioEngine {
 
     let current: AudioNode = this.equalizerNodes[this.equalizerNodes.length - 1] ?? this.masterGain;
 
-    // --- Compressor -----------------------------------------------------
-    if (this.compressorNode) {
-      current.connect(this.compressorNode);
-      current = this.compressorNode;
-    }
-
     // --- Distortion -----------------------------------------------------
     if (this.distortionNode) {
       current.connect(this.distortionNode);
@@ -231,6 +232,13 @@ export class AudioEngine {
       this.reverbWet.connect(this.reverbOutput);
 
       current = this.reverbOutput;
+    }
+
+    // --- Compressor (glue / safety limiter) ------------------------------
+    // It runs last so that the wet and dry paths summing above 1.0 cannot clip.
+    if (this.compressorNode) {
+      current.connect(this.compressorNode);
+      current = this.compressorNode;
     }
 
     // --- Master -> analyser -> destination -------------------------------
@@ -444,20 +452,34 @@ export class AudioEngine {
     }
   }
 
+  /**
+   * Returns the current frequency data.
+   *
+   * The buffer is reused between calls - the visualiser reads it every frame, so allocating a
+   * new array each time would create 60 allocations per second per visualiser. Treat the
+   * result as read-only and copy it if you need to keep it.
+   */
   getFrequencyData(): Uint8Array {
-    if (!this.analyserNode) return new Uint8Array(0);
+    if (!this.analyserNode) return EMPTY_DATA;
 
-    const dataArray = new Uint8Array(this.analyserNode.frequencyBinCount);
-    this.analyserNode.getByteFrequencyData(dataArray);
-    return dataArray;
+    if (!this.frequencyBuffer || this.frequencyBuffer.length !== this.analyserNode.frequencyBinCount) {
+      this.frequencyBuffer = new Uint8Array(this.analyserNode.frequencyBinCount);
+    }
+
+    this.analyserNode.getByteFrequencyData(this.frequencyBuffer);
+    return this.frequencyBuffer;
   }
 
+  /** Returns the current time domain data. The buffer is reused - see getFrequencyData. */
   getTimeDomainData(): Uint8Array {
-    if (!this.analyserNode) return new Uint8Array(0);
+    if (!this.analyserNode) return EMPTY_DATA;
 
-    const dataArray = new Uint8Array(this.analyserNode.frequencyBinCount);
-    this.analyserNode.getByteTimeDomainData(dataArray);
-    return dataArray;
+    if (!this.timeDomainBuffer || this.timeDomainBuffer.length !== this.analyserNode.frequencyBinCount) {
+      this.timeDomainBuffer = new Uint8Array(this.analyserNode.frequencyBinCount);
+    }
+
+    this.analyserNode.getByteTimeDomainData(this.timeDomainBuffer);
+    return this.timeDomainBuffer;
   }
 
   getCurrentTime(): number {

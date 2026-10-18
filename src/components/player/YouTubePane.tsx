@@ -9,7 +9,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Youtube, Play, Pause, Search, Plus, Loader2, AlertTriangle } from 'lucide-react';
 import { YouTubeController, YT_PLAYER_CONTAINER_ID } from '@/services/youtubeController';
 import { AudioProxyService } from '@/services/audioProxyService';
-import { useAudioPlayer } from '../audio/AudioPlayerProvider';
+import { usePlayerActions, usePlayerSelector } from '../audio/AudioPlayerProvider';
 
 interface YouTubeResult {
   id: string;
@@ -29,7 +29,8 @@ const formatDuration = (seconds: number): string => {
 };
 
 export const YouTubePane: React.FC = () => {
-  const { loadYouTube, addToPlaylist, seekTo, setVolume, volume } = useAudioPlayer();
+  const { loadYouTube, addToPlaylist, seekTo, setVolume } = usePlayerActions();
+  const volume = usePlayerSelector((state) => state.volume);
 
   const [url, setUrl] = useState('');
   const [query, setQuery] = useState('');
