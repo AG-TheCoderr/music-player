@@ -1,11 +1,11 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
+import { AudioPlayerProvider } from '../src/components/audio/AudioPlayerProvider';
 import {
-  AudioPlayerProvider,
   usePlayerActions,
   usePlayerSelector,
   usePlayerStore,
-} from '../src/components/audio/AudioPlayerProvider';
+} from '../src/components/audio/playerContext';
 
 export const renders = {
   time: 0,

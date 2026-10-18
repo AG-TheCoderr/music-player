@@ -9,7 +9,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Youtube, Play, Pause, Search, Plus, Loader2, AlertTriangle } from 'lucide-react';
 import { YouTubeController, YT_PLAYER_CONTAINER_ID } from '@/services/youtubeController';
 import { AudioProxyService } from '@/services/audioProxyService';
-import { usePlayerActions, usePlayerSelector } from '../audio/AudioPlayerProvider';
+import { usePlayerActions, usePlayerSelector } from '../audio/playerContext';
 
 interface YouTubeResult {
   id: string;
@@ -29,8 +29,9 @@ const formatDuration = (seconds: number): string => {
 };
 
 export const YouTubePane: React.FC = () => {
-  const { loadYouTube, addToPlaylist, seekTo, setVolume } = usePlayerActions();
+  const { loadYouTube, addToPlaylist, seekTo, setVolume, play, pause } = usePlayerActions();
   const volume = usePlayerSelector((state) => state.volume);
+  const isPlaying = usePlayerSelector((state) => state.isPlaying);
 
   const [url, setUrl] = useState('');
   const [query, setQuery] = useState('');
@@ -40,8 +41,23 @@ export const YouTubePane: React.FC = () => {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [ytState, setYtState] = useState(YouTubeController.getState());
 
+  // The controller polls the player, so the pane only re-renders when something actually
+  // changed - polling every 300 ms and always setting a fresh object re-rendered the whole
+  // panel three times a second for nothing.
   useEffect(() => {
-    const timer = window.setInterval(() => setYtState(YouTubeController.getState()), 300);
+    const timer = window.setInterval(() => {
+      const next = YouTubeController.getState();
+      setYtState((previous) =>
+        previous.ready === next.ready &&
+        previous.playing === next.playing &&
+        previous.ended === next.ended &&
+        previous.error === next.error &&
+        Math.abs(previous.currentTime - next.currentTime) < 0.25 &&
+        previous.duration === next.duration
+          ? previous
+          : next
+      );
+    }, 300);
     return () => window.clearInterval(timer);
   }, []);
 
@@ -140,11 +156,11 @@ export const YouTubePane: React.FC = () => {
             <Button
               variant="outline"
               size="icon"
-              onClick={() => (ytState.playing ? YouTubeController.pause() : YouTubeController.play())}
+              onClick={() => (isPlaying ? pause() : play())}
               disabled={!ytState.ready}
-              aria-label={ytState.playing ? 'Pause' : 'Play'}
+              aria-label={isPlaying ? 'Pause' : 'Play'}
             >
-              {ytState.playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+              {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
             </Button>
 
             <Slider
@@ -156,6 +172,8 @@ export const YouTubePane: React.FC = () => {
                 YouTubeController.seekTo(value);
                 seekTo(value);
               }}
+              thumbAriaLabel="YouTube playback position"
+              thumbAriaValueText={`${formatDuration(ytState.currentTime)} of ${formatDuration(ytState.duration)}`}
               className="flex-1"
             />
 
@@ -171,6 +189,8 @@ export const YouTubePane: React.FC = () => {
               max={100}
               step={1}
               onValueChange={([value]) => setVolume(value / 100)}
+              thumbAriaLabel="YouTube volume"
+              thumbAriaValueText={`${Math.round(volume * 100)}%`}
               className="flex-1"
             />
             <span className="text-xs text-muted-foreground tabular-nums w-9 text-right">
@@ -252,10 +272,20 @@ export const YouTubePane: React.FC = () => {
                     </p>
                   </div>
 
-                  <Button size="sm" variant="ghost" onClick={() => handlePlayResult(result)} aria-label="Play">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handlePlayResult(result)}
+                    aria-label={`Play ${result.title}`}
+                  >
                     <Play className="h-4 w-4" />
                   </Button>
-                  <Button size="sm" variant="ghost" onClick={() => handleAddResult(result)} aria-label="Add to playlist">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleAddResult(result)}
+                    aria-label={`Add ${result.title} to playlist`}
+                  >
                     <Plus className="h-4 w-4" />
                   </Button>
                 </div>

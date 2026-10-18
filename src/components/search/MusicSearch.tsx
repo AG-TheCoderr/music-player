@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Search, Play, Plus, Music, Loader2, AlertTriangle, Clock, X, History } from 'lucide-react';
 import { AudioProxyService } from '@/services/audioProxyService';
 import { loadRecentSearches, rememberSearch, clearRecentSearches } from '@/services/recentSearches';
-import { usePlayerActions } from '@/components/audio/AudioPlayerProvider';
+import { usePlayerActions } from '@/components/audio/playerContext';
 import { useToast } from '@/hooks/use-toast';
 
 interface SearchResult {

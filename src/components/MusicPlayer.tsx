@@ -1,6 +1,7 @@
 import React, { Suspense, lazy, useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { AudioPlayerProvider, usePlayerActions, usePlayerSelector } from './audio/AudioPlayerProvider';
+import { AudioPlayerProvider } from './audio/AudioPlayerProvider';
+import { usePlayerActions, usePlayerSelector } from './audio/playerContext';
 import { PlayerControls } from './player/PlayerControls';
 import { FileLoader } from './player/FileLoader';
 import { ModeSelector } from './player/ModeSelector';
@@ -85,7 +86,7 @@ const MusicPlayerContent: React.FC = () => {
             <Headphones className="w-6 h-6 text-white" />
           </div>
           <h1 className="text-4xl font-bold bg-gradient-primary bg-clip-text text-transparent">
-            Pro Audio Player
+            Sonic Studio Pro
           </h1>
         </div>
         <div className="flex items-center justify-center gap-3">
@@ -229,7 +230,7 @@ const MusicPlayerContent: React.FC = () => {
                       </span>
                     </div>
                     <div className="flex justify-between gap-4">
-                      <span className="text-muted-foreground">Bit Depth:</span>
+                      <span className="text-muted-foreground">Engine Precision:</span>
                       <span className="text-foreground">32-bit float</span>
                     </div>
                     <div className="flex justify-between gap-4">

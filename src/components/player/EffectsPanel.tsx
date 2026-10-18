@@ -5,7 +5,7 @@ import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { usePlayerActions, usePlayerSelector } from '../audio/AudioPlayerProvider';
+import { usePlayerActions, usePlayerSelector } from '../audio/playerContext';
 
 export const EffectsPanel: React.FC = () => {
   const { updateEffects } = usePlayerActions();
@@ -70,6 +70,7 @@ export const EffectsPanel: React.FC = () => {
               <div className="space-y-2">
                 <Label className="text-sm text-foreground">Room Size</Label>
                 <Slider
+                  thumbAriaLabel="Room Size"
                   value={[effects.reverb.roomSize]}
                   min={0}
                   max={1}
@@ -85,6 +86,7 @@ export const EffectsPanel: React.FC = () => {
               <div className="space-y-2">
                 <Label className="text-sm text-foreground">Damping</Label>
                 <Slider
+                  thumbAriaLabel="Damping"
                   value={[effects.reverb.damping]}
                   min={0}
                   max={1}
@@ -100,6 +102,7 @@ export const EffectsPanel: React.FC = () => {
               <div className="space-y-2">
                 <Label className="text-sm text-foreground">Wet Level</Label>
                 <Slider
+                  thumbAriaLabel="Wet Level"
                   value={[effects.reverb.wetLevel]}
                   min={0}
                   max={1}
@@ -115,6 +118,7 @@ export const EffectsPanel: React.FC = () => {
               <div className="space-y-2">
                 <Label className="text-sm text-foreground">Dry Level</Label>
                 <Slider
+                  thumbAriaLabel="Dry Level"
                   value={[effects.reverb.dryLevel]}
                   min={0}
                   max={1}
@@ -134,6 +138,7 @@ export const EffectsPanel: React.FC = () => {
               <div className="space-y-2">
                 <Label className="text-sm text-foreground">Rate</Label>
                 <Slider
+                  thumbAriaLabel="Rate"
                   value={[effects.chorus.rate]}
                   min={0.1}
                   max={10}
@@ -149,6 +154,7 @@ export const EffectsPanel: React.FC = () => {
               <div className="space-y-2">
                 <Label className="text-sm text-foreground">Depth</Label>
                 <Slider
+                  thumbAriaLabel="Depth"
                   value={[effects.chorus.depth]}
                   min={0}
                   max={1}
@@ -164,6 +170,7 @@ export const EffectsPanel: React.FC = () => {
               <div className="space-y-2">
                 <Label className="text-sm text-foreground">Feedback</Label>
                 <Slider
+                  thumbAriaLabel="Feedback"
                   value={[effects.chorus.feedback]}
                   min={0}
                   max={0.9}
@@ -179,6 +186,7 @@ export const EffectsPanel: React.FC = () => {
               <div className="space-y-2">
                 <Label className="text-sm text-foreground">Wet Level</Label>
                 <Slider
+                  thumbAriaLabel="Wet Level"
                   value={[effects.chorus.wetLevel]}
                   min={0}
                   max={1}
@@ -198,6 +206,7 @@ export const EffectsPanel: React.FC = () => {
               <div className="space-y-2">
                 <Label className="text-sm text-foreground">Drive Amount</Label>
                 <Slider
+                  thumbAriaLabel="Drive Amount"
                   value={[effects.distortion.amount]}
                   min={0}
                   max={100}
@@ -243,6 +252,7 @@ export const EffectsPanel: React.FC = () => {
               <div className="space-y-2">
                 <Label className="text-sm text-foreground">Threshold</Label>
                 <Slider
+                  thumbAriaLabel="Threshold"
                   value={[effects.compressor.threshold]}
                   min={-100}
                   max={0}
@@ -258,6 +268,7 @@ export const EffectsPanel: React.FC = () => {
               <div className="space-y-2">
                 <Label className="text-sm text-foreground">Ratio</Label>
                 <Slider
+                  thumbAriaLabel="Ratio"
                   value={[effects.compressor.ratio]}
                   min={1}
                   max={20}
@@ -273,6 +284,7 @@ export const EffectsPanel: React.FC = () => {
               <div className="space-y-2">
                 <Label className="text-sm text-foreground">Attack</Label>
                 <Slider
+                  thumbAriaLabel="Attack"
                   value={[effects.compressor.attack]}
                   min={0}
                   max={1}
@@ -288,6 +300,7 @@ export const EffectsPanel: React.FC = () => {
               <div className="space-y-2">
                 <Label className="text-sm text-foreground">Release</Label>
                 <Slider
+                  thumbAriaLabel="Release"
                   value={[effects.compressor.release]}
                   min={0}
                   max={1}
@@ -303,6 +316,7 @@ export const EffectsPanel: React.FC = () => {
               <div className="space-y-2">
                 <Label className="text-sm text-foreground">Knee</Label>
                 <Slider
+                  thumbAriaLabel="Knee"
                   value={[effects.compressor.knee]}
                   min={0}
                   max={40}

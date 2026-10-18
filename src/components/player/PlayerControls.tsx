@@ -13,7 +13,7 @@ import {
   Shuffle,
   Loader2,
 } from 'lucide-react';
-import { usePlayerActions, usePlayerSelector } from '../audio/AudioPlayerProvider';
+import { usePlayerActions, usePlayerSelector } from '../audio/playerContext';
 import { cn } from '@/lib/utils';
 
 export const PlayerControls: React.FC = () => {

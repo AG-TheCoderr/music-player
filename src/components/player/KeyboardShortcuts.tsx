@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Keyboard, X } from 'lucide-react';
-import { usePlayerActions, usePlayerSelector } from '../audio/AudioPlayerProvider';
+import { usePlayerActions, usePlayerSelector } from '../audio/playerContext';
 
 interface KeyboardShortcutsProps {
   /** Currently active tab, so the number keys can switch tabs. */

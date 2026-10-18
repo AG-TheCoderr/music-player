@@ -3,7 +3,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Mic, Music2, Volume2, Zap } from 'lucide-react';
-import { usePlayerActions, usePlayerSelector } from '../audio/AudioPlayerProvider';
+import { usePlayerActions, usePlayerSelector } from '../audio/playerContext';
 import { cn } from '@/lib/utils';
 
 const modes = [
@@ -61,6 +61,7 @@ export const ModeSelector: React.FC = () => {
                 key={modeOption.id}
                 variant={isActive ? "default" : "outline"}
                 onClick={() => setMode(modeOption.id)}
+                aria-pressed={isActive}
                 className={cn(
                   "h-auto p-4 justify-start transition-bounce",
                   isActive

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { usePlayerActions, usePlayerSelector, Track } from '../audio/AudioPlayerProvider';
+import { usePlayerActions, usePlayerSelector } from '../audio/playerContext';
+import { Track } from '../audio/playerStore';
 import {
   DndContext,
   closestCenter,

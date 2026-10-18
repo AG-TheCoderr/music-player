@@ -123,19 +123,23 @@ export function parseVideoId(input: string): string | null {
   return null;
 }
 
-function ensureContainer(containerId: string): HTMLElement {
-  let element = document.getElementById(containerId);
-  if (!element) {
-    element = document.createElement('div');
-    element.id = containerId;
-    element.style.position = 'fixed';
-    element.style.left = '-9999px';
-    element.style.top = '0';
-    element.style.width = '320px';
-    element.style.height = '180px';
-    document.body.appendChild(element);
+/**
+ * Waits for the element the player should live in.
+ *
+ * The container is rendered by <YouTubePane/>. Creating a hidden fallback instead would leave
+ * two elements with the same id in the document, and the player would end up in the invisible
+ * one - the video would play, but nobody would see it.
+ */
+async function waitForContainer(containerId: string, timeoutMs = 4000): Promise<HTMLElement> {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    const element = document.getElementById(containerId);
+    if (element) return element;
+    await new Promise((resolve) => window.setTimeout(resolve, 50));
   }
-  return element;
+
+  throw new Error('The YouTube player is not ready yet. Open the YouTube tab and try again.');
 }
 
 function startPolling(): void {
@@ -154,10 +158,10 @@ function startPolling(): void {
   }, 250);
 }
 
-function createPlayer(containerId: string, videoId: string): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    const container = ensureContainer(containerId);
+async function createPlayer(containerId: string, videoId: string): Promise<void> {
+  const container = await waitForContainer(containerId);
 
+  return new Promise<void>((resolve, reject) => {
     let settled = false;
     const timeout = window.setTimeout(() => {
       if (settled) return;

@@ -1,12 +1,4 @@
-import React, {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useSyncExternalStore,
-} from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { AudioEngine, AudioEffects } from './AudioEngine';
 import { MediaSessionService } from '@/services/mediaSession';
 import { YouTubeController, YT_PLAYER_CONTAINER_ID } from '@/services/youtubeController';
@@ -18,11 +10,9 @@ import {
   PlayMode,
   PlayerStore,
   RepeatMode,
-  shallowEqual,
   Track,
 } from './playerStore';
-
-export type { Track, PlayMode, RepeatMode, ExternalSource, AudioPlayerState, AudioPlayerActions };
+import { PlayerActionsContext, PlayerStoreContext } from './playerContext';
 
 const initialEffects: AudioEffects = {
   reverb: {
@@ -50,7 +40,7 @@ const initialEffects: AudioEffects = {
   },
 };
 
-export const equalizerPresets: Record<string, number[]> = {
+const equalizerPresets: Record<string, number[]> = {
   flat: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
   rock: [3, 2, -1, -2, -1, 1, 3, 4, 4, 3],
   pop: [1, 2, 3, 2, 0, -1, -1, 1, 2, 3],
@@ -102,57 +92,11 @@ function buildShuffleOrder(playlist: Track[], keepId: string | null): number[] {
   return keepIndex >= 0 ? [keepIndex, ...rest] : rest;
 }
 
-const PlayerStoreContext = createContext<PlayerStore | null>(null);
-const PlayerActionsContext = createContext<AudioPlayerActions | null>(null);
-
-/** Returns the underlying store. */
-export const usePlayerStore = (): PlayerStore => {
-  const store = useContext(PlayerStoreContext);
-  if (!store) throw new Error('usePlayerStore must be used within an AudioPlayerProvider');
-  return store;
-};
-
-/**
- * Subscribes to a slice of the player state.
- *
- * The returned value keeps its identity while the selected slice is unchanged, so components
- * only re-render when the data they actually use changes - not on every playback tick.
- */
-export function usePlayerSelector<T>(
-  selector: (state: AudioPlayerState) => T,
-  isEqual: (a: T, b: T) => boolean = shallowEqual
-): T {
-  const store = usePlayerStore();
-  const selectorRef = useRef(selector);
-  selectorRef.current = selector;
-  const isEqualRef = useRef(isEqual);
-  isEqualRef.current = isEqual;
-
-  const cache = useRef<{ value: T } | null>(null);
-
-  const getSnapshot = useCallback(() => {
-    const next = selectorRef.current(store.getState());
-    const previous = cache.current;
-    if (previous && isEqualRef.current(previous.value, next)) {
-      return previous.value;
-    }
-    cache.current = { value: next };
-    return next;
-  }, [store]);
-
-  return useSyncExternalStore(store.subscribe, getSnapshot, getSnapshot);
-}
-
-/** Returns the stable action object. Actions never change identity, so this never re-renders. */
-export const usePlayerActions = (): AudioPlayerActions => {
-  const actions = useContext(PlayerActionsContext);
-  if (!actions) throw new Error('usePlayerActions must be used within an AudioPlayerProvider');
-  return actions;
-};
-
 export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const audioEngineRef = useRef<AudioEngine | null>(null);
   const shuffleOrderRef = useRef<number[]>([]);
+  // Guards the YouTube auto advance so a finished video is only handled once.
+  const ytEndedHandledRef = useRef(false);
 
   const storeRef = useRef<PlayerStore | null>(null);
   if (!storeRef.current) {
@@ -614,6 +558,23 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
             error: yt.error ?? prev.error,
           }));
           MediaSessionService.updatePosition(yt.currentTime, yt.duration);
+
+          // A YouTube video that reached its end advances the playlist, the same way a file
+          // that runs out does.
+          if (yt.ended) {
+            if (!ytEndedHandledRef.current) {
+              ytEndedHandledRef.current = true;
+              const { repeatMode } = store.getState();
+              if (repeatMode === 'one') {
+                YouTubeController.seekTo(0);
+                play();
+              } else {
+                nextTrack();
+              }
+            }
+          } else {
+            ytEndedHandledRef.current = false;
+          }
         } else {
           const engine = audioEngineRef.current;
           if (engine) {
@@ -634,7 +595,7 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [isPlaying, externalSource, store]);
+  }, [isPlaying, externalSource, nextTrack, play, store]);
 
   // ---------------------------------------------------------------------
   // Equalizer / effects

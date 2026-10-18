@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useCallback } from 'react';
-import { usePlayerActions, usePlayerSelector } from './AudioPlayerProvider';
+import { usePlayerActions, usePlayerSelector } from './playerContext';
 import { getResolvedCSSColor, createColorWithAlpha } from '@/utils/colorUtils';
 
 interface VisualizerProps {

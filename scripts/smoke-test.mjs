@@ -126,7 +126,7 @@ const body = doc.body.textContent || '';
 const html = doc.body.innerHTML;
 
 const checks = [
-  ['app mounted', html.includes('Pro Audio Player')],
+  ['app mounted', html.includes('Sonic Studio Pro')],
   ['player tab', body.includes('Player')],
   ['equalizer tab', body.includes('Equalizer')],
   ['effects tab', body.includes('Effects')],
