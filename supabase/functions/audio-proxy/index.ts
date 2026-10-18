@@ -83,6 +83,20 @@ serve(async (req) => {
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
         );
       }
+      if (query.length > 200) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Query is too long (max 200 characters).' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
+      }
+      // Only the 'all' catalogue (iTunes previews) is available on this endpoint.
+      // YouTube searches are handled by the separate youtube-search function.
+      if (platform !== 'all') {
+        return new Response(
+          JSON.stringify({ success: false, error: `Searching the '${platform}' platform is not supported by this endpoint. Use the youtube-search function for YouTube.` }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
+      }
       // Use iTunes for reliable, legal previews
       let results: SearchResult[] = [];
       try {
@@ -101,6 +115,18 @@ serve(async (req) => {
       if (!url || !url.trim()) {
         return new Response(
           JSON.stringify({ success: false, error: 'Missing url', hint: 'Provide {"action":"extract","url":"https://..."} in JSON body or use ?action=extract&url=...' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
+      }
+      if (url.length > 2048) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'URL is too long (max 2048 characters).' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
+      }
+      if (!/^https?:\/\//i.test(url)) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Only http(s) URLs are supported.' }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
         );
       }

@@ -12,6 +12,17 @@ dist
 dist-ssr
 *.local
 
+# Environment
+.env
+.env.*
+!.env.example
+
+# Supabase local tooling
+supabase/.temp
+
+# AI agent scratch space / verification artefacts
+jules-scratch/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

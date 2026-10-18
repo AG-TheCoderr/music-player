@@ -1,37 +1,46 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
-import { AudioEngine, AudioEffects } from './AudioEngine';
+import { AudioEngine, AudioEffects, AudioEngineInfo } from './AudioEngine';
 import { MediaSessionService } from '@/services/mediaSession';
-import { YouTubeController } from '@/services/youtubeController';
+import { YouTubeController, YT_PLAYER_CONTAINER_ID } from '@/services/youtubeController';
 
-interface Track {
+export interface Track {
   id: string;
   title: string;
   artist: string;
   duration: number;
   src: string | File;
   artwork?: string;
+  /** `youtube` tracks are played through the YouTube IFrame player instead of the Web Audio graph. */
+  source?: 'audio' | 'youtube';
 }
 
-interface AudioPlayerState {
+export type PlayMode = 'normal' | 'vocal-enhance' | 'instrument-focus' | 'bass-boost';
+export type RepeatMode = 'none' | 'one' | 'all';
+export type ExternalSource = 'none' | 'youtube';
+
+export interface AudioPlayerState {
   currentTrack: Track | null;
   isPlaying: boolean;
   volume: number;
   currentTime: number;
   duration: number;
   isLoading: boolean;
+  error: string | null;
   playlist: Track[];
   currentTrackIndex: number;
-  mode: 'normal' | 'vocal-enhance' | 'instrument-focus' | 'bass-boost';
+  mode: PlayMode;
   equalizerBands: number[];
+  equalizerPreset: string;
   effects: AudioEffects;
   isShuffled: boolean;
-  repeatMode: 'none' | 'one' | 'all';
-  externalSource: 'none' | 'youtube';
+  repeatMode: RepeatMode;
+  externalSource: ExternalSource;
+  audioInfo: AudioEngineInfo | null;
 }
 
-interface AudioPlayerActions {
+export interface AudioPlayerActions {
   loadTrack: (track: Track) => Promise<void>;
-  loadYouTube: (url: string, meta?: Partial<Track>) => Promise<void>;
+  loadYouTube: (url: string, meta?: Partial<Track>, containerId?: string) => Promise<void>;
   play: () => void;
   pause: () => void;
   stop: () => void;
@@ -39,7 +48,7 @@ interface AudioPlayerActions {
   seekTo: (time: number) => void;
   nextTrack: () => void;
   previousTrack: () => void;
-  setMode: (mode: AudioPlayerState['mode']) => void;
+  setMode: (mode: PlayMode) => void;
   setEqualizerBand: (index: number, gain: number) => void;
   setEqualizerPreset: (preset: string) => void;
   updateEffects: (effects: Partial<AudioEffects>) => void;
@@ -50,11 +59,12 @@ interface AudioPlayerActions {
   reorderPlaylist: (fromIndex: number, toIndex: number) => void;
   playTrackAtIndex: (index: number) => void;
   clearPlaylist: () => void;
+  dismissError: () => void;
   getFrequencyData: () => Uint8Array;
   getTimeDomainData: () => Uint8Array;
 }
 
-type AudioPlayerContextType = AudioPlayerState & AudioPlayerActions;
+export type AudioPlayerContextType = AudioPlayerState & AudioPlayerActions;
 
 const AudioPlayerContext = createContext<AudioPlayerContextType | null>(null);
 
@@ -63,28 +73,28 @@ const initialEffects: AudioEffects = {
     roomSize: 0.3,
     damping: 0.5,
     wetLevel: 0.1,
-    dryLevel: 0.9
+    dryLevel: 0.9,
   },
   chorus: {
     rate: 1.5,
     depth: 0.3,
     feedback: 0.2,
-    wetLevel: 0.3
+    wetLevel: 0.3,
   },
   distortion: {
     amount: 0,
-    oversample: '4x'
+    oversample: '4x',
   },
   compressor: {
     threshold: -24,
     knee: 30,
     ratio: 12,
     attack: 0.003,
-    release: 0.25
-  }
+    release: 0.25,
+  },
 };
 
-const equalizerPresets = {
+export const equalizerPresets: Record<string, number[]> = {
   flat: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
   rock: [3, 2, -1, -2, -1, 1, 3, 4, 4, 3],
   pop: [1, 2, 3, 2, 0, -1, -1, 1, 2, 3],
@@ -92,358 +102,487 @@ const equalizerPresets = {
   classical: [3, 2, 0, 0, 0, 0, -1, -1, -1, -2],
   electronic: [4, 3, 1, 0, -1, 1, 2, 3, 4, 4],
   'bass-boost': [6, 4, 2, 1, 0, 0, 0, 0, 0, 0],
-  'vocal-enhance': [0, 0, 0, 2, 4, 4, 2, 1, 0, 0]
+  'vocal-enhance': [0, 0, 0, 2, 4, 4, 2, 1, 0, 0],
+  'instrument-focus': [0, 0, -2, -1, 0, 1, 2, 3, 2, 1],
 };
+
+const MODE_PRESET: Record<PlayMode, string> = {
+  normal: 'flat',
+  'vocal-enhance': 'vocal-enhance',
+  'instrument-focus': 'instrument-focus',
+  'bass-boost': 'bass-boost',
+};
+
+const initialState: AudioPlayerState = {
+  currentTrack: null,
+  isPlaying: false,
+  volume: 0.7,
+  currentTime: 0,
+  duration: 0,
+  isLoading: false,
+  error: null,
+  playlist: [],
+  currentTrackIndex: -1,
+  mode: 'normal',
+  equalizerBands: [...equalizerPresets.flat],
+  equalizerPreset: 'flat',
+  effects: initialEffects,
+  isShuffled: false,
+  repeatMode: 'none',
+  externalSource: 'none',
+  audioInfo: null,
+};
+
+/** Builds a random playback order, keeping the active track first. */
+function buildShuffleOrder(playlist: Track[], keepId: string | null): number[] {
+  const keepIndex = keepId ? playlist.findIndex((track) => track.id === keepId) : -1;
+  const rest = playlist.map((_, index) => index).filter((index) => index !== keepIndex);
+
+  for (let i = rest.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [rest[i], rest[j]] = [rest[j], rest[i]];
+  }
+
+  return keepIndex >= 0 ? [keepIndex, ...rest] : rest;
+}
 
 export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const audioEngineRef = useRef<AudioEngine | null>(null);
-  const animationFrameRef = useRef<number>();
+  const shuffleOrderRef = useRef<number[]>([]);
+  const [state, setState] = useState<AudioPlayerState>(initialState);
 
-  const [state, setState] = useState<AudioPlayerState>({
-    currentTrack: null,
-    isPlaying: false,
-    volume: 0.7,
-    currentTime: 0,
-    duration: 0,
-    isLoading: false,
-    playlist: [],
-    currentTrackIndex: -1,
-    mode: 'normal',
-    equalizerBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    effects: initialEffects,
-    isShuffled: false,
-  repeatMode: 'none',
-  externalSource: 'none'
-  });
+  // Keeps the latest state reachable from stable callbacks (no stale closures).
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
-  // Initialize audio engine
+  // ---------------------------------------------------------------------
+  // Engine lifecycle
+  // ---------------------------------------------------------------------
   useEffect(() => {
-    audioEngineRef.current = new AudioEngine();
+    const engine = new AudioEngine();
+    audioEngineRef.current = engine;
+
+    engine.setErrorHandler((error) => {
+      setState((prev) => ({ ...prev, isPlaying: false, error: error.message }));
+    });
+
     return () => {
-      if (audioEngineRef.current) {
-        audioEngineRef.current.dispose();
-      }
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
+      engine.setEndedHandler(null);
+      engine.setErrorHandler(null);
+      engine.dispose();
+      audioEngineRef.current = null;
     };
   }, []);
 
-  // Update time
-  const updateTime = useCallback(() => {
-    if (state.externalSource === 'youtube') {
-      const yt = YouTubeController.getState();
-      setState(prev => ({ ...prev, currentTime: yt.currentTime, duration: yt.duration, isPlaying: yt.playing }));
-      MediaSessionService.updatePosition(yt.currentTime, yt.duration || 0);
-    } else if (audioEngineRef.current && state.isPlaying) {
-      const currentTime = audioEngineRef.current.getCurrentTime();
-      const duration = audioEngineRef.current.getDuration();
-      setState(prev => ({ ...prev, currentTime, duration: duration || prev.duration }));
-      MediaSessionService.updatePosition(currentTime, duration || 0);
-      if (duration > 0 && currentTime >= duration - 0.1) {
-        if (state.repeatMode === 'one') {
-          audioEngineRef.current.setCurrentTime(0);
-          audioEngineRef.current.play();
-        } else if (state.repeatMode === 'all' || state.currentTrackIndex < state.playlist.length - 1) {
-          const nextIndex = state.currentTrackIndex + 1;
-          if (nextIndex < state.playlist.length) {
-            loadTrack(state.playlist[nextIndex]);
-          } else if (state.repeatMode === 'all' && state.playlist.length > 0) {
-            loadTrack(state.playlist[0]);
-          }
-        } else {
-          setState(prev => ({ ...prev, isPlaying: false }));
-        }
-      }
-    }
+  // ---------------------------------------------------------------------
+  // Playback helpers
+  // ---------------------------------------------------------------------
+  const applyEngineState = useCallback(() => {
+    const engine = audioEngineRef.current;
+    if (!engine) return;
 
-    if (state.isPlaying || state.externalSource === 'youtube') {
-      animationFrameRef.current = requestAnimationFrame(updateTime);
-    }
-  }, [state.isPlaying, state.repeatMode, state.currentTrackIndex, state.playlist.length, state.externalSource]);
-
-  useEffect(() => {
-    if (state.isPlaying) {
-      animationFrameRef.current = requestAnimationFrame(updateTime);
-    } else {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    }
-    return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    };
-  }, [state.isPlaying, updateTime]);
-
-  const loadTrack = useCallback(async (track: Track) => {
-    if (!audioEngineRef.current) return;
-
-    setState(prev => ({ ...prev, isLoading: true, currentTrack: track }));
-
-    try {
-      // Disable external source when loading a normal track
-      setState(prev => ({ ...prev, externalSource: 'none' }));
-      await audioEngineRef.current.loadAudio(track.src);
-      audioEngineRef.current.setVolume(state.volume);
-      
-      // Apply current EQ settings
-      state.equalizerBands.forEach((gain, index) => {
-        audioEngineRef.current!.setEqualizerBand(index, gain);
-      });
-
-      // Apply effects
-      audioEngineRef.current.setReverbSettings(state.effects.reverb);
-      audioEngineRef.current.setCompressorSettings(state.effects.compressor);
-      audioEngineRef.current.setDistortionAmount(state.effects.distortion.amount);
-
-      const audioElement = audioEngineRef.current.getAudioElement();
-      if (audioElement) {
-        audioElement.addEventListener('loadedmetadata', () => {
-          setState(prev => ({
-            ...prev,
-            duration: audioElement.duration,
-            isLoading: false
-          }));
-        });
-      }
-
-      // Setup Media Session
-      MediaSessionService.setupMediaSession(track, {
-        onPlay: play,
-        onPause: pause,
-        onNextTrack: nextTrack,
-        onPreviousTrack: previousTrack,
-        onSeek: (time) => {
-          if (time < 0) {
-            // Relative seek backward
-            seekTo(Math.max(0, state.currentTime + time));
-          } else if (time > state.duration) {
-            // Absolute seek
-            seekTo(time);
-          } else {
-            // Relative seek forward or absolute
-            seekTo(time > state.currentTime + 30 ? time : state.currentTime + time);
-          }
-        }
-      });
-
-      setState(prev => ({ ...prev, isLoading: false }));
-    } catch (error) {
-      console.error('Error loading track:', error);
-      setState(prev => ({ ...prev, isLoading: false }));
-    }
-  }, [state.volume, state.equalizerBands, state.effects, state.currentTime, state.duration]);
-
-  // Load a YouTube URL into a hidden global iframe and set as active external source
-  const loadYouTube = useCallback(async (url: string, meta?: Partial<Track>) => {
-    setState(prev => ({ ...prev, isLoading: true }));
-    try {
-      const containerId = 'yt-global-player';
-      if (!document.getElementById(containerId)) {
-        const el = document.createElement('div');
-        el.id = containerId;
-        el.style.position = 'fixed';
-        el.style.left = '-9999px';
-        el.style.top = '-9999px';
-        el.style.width = '320px';
-        el.style.height = '180px';
-        document.body.appendChild(el);
-      }
-      await YouTubeController.load(containerId, url);
-      const title = meta?.title || 'YouTube Video';
-      const artist = meta?.artist || 'YouTube';
-      const artwork = meta?.artwork;
-      const track: Track = { id: `yt-${Date.now()}`, title, artist, duration: 0, src: url, artwork };
-      setState(prev => ({ ...prev, currentTrack: track, externalSource: 'youtube', isLoading: false }));
-      // Media session handlers will use current context methods via window callbacks
-      MediaSessionService.setupMediaSession(track, {
-        onPlay: () => YouTubeController.play(),
-        onPause: () => YouTubeController.pause(),
-        onNextTrack: () => {},
-        onPreviousTrack: () => {},
-        onSeek: (time) => YouTubeController.seekTo(time)
-      });
-    } catch (e) {
-      console.error('YouTube load error', e);
-      setState(prev => ({ ...prev, isLoading: false }));
-    }
+    const current = stateRef.current;
+    engine.setVolume(current.volume);
+    engine.setAllEqualizerBands(current.equalizerBands);
+    engine.setReverbSettings(current.effects.reverb);
+    engine.setChorusSettings(current.effects.chorus);
+    engine.setCompressorSettings(current.effects.compressor);
+    engine.setDistortionAmount(current.effects.distortion.amount);
+    engine.setDistortionOversample(current.effects.distortion.oversample);
   }, []);
 
   const play = useCallback(() => {
-    if (state.externalSource === 'youtube') {
+    const current = stateRef.current;
+
+    if (current.externalSource === 'youtube') {
       YouTubeController.play();
-      setState(prev => ({ ...prev, isPlaying: true }));
+      setState((prev) => ({ ...prev, isPlaying: true, error: null }));
       MediaSessionService.updatePlaybackState('playing');
       return;
     }
+
     if (audioEngineRef.current) {
       audioEngineRef.current.play();
-      setState(prev => ({ ...prev, isPlaying: true }));
+      setState((prev) => ({ ...prev, isPlaying: true, error: null }));
       MediaSessionService.updatePlaybackState('playing');
     }
-  }, [state.externalSource]);
+  }, []);
 
   const pause = useCallback(() => {
-    if (state.externalSource === 'youtube') {
+    const current = stateRef.current;
+
+    if (current.externalSource === 'youtube') {
       YouTubeController.pause();
-      setState(prev => ({ ...prev, isPlaying: false }));
+      setState((prev) => ({ ...prev, isPlaying: false }));
       MediaSessionService.updatePlaybackState('paused');
       return;
     }
+
     if (audioEngineRef.current) {
       audioEngineRef.current.pause();
-      setState(prev => ({ ...prev, isPlaying: false }));
+      setState((prev) => ({ ...prev, isPlaying: false }));
       MediaSessionService.updatePlaybackState('paused');
     }
-  }, [state.externalSource]);
+  }, []);
 
   const stop = useCallback(() => {
-    if (state.externalSource === 'youtube') {
-      YouTubeController.pause();
-      YouTubeController.seekTo(0);
-      setState(prev => ({ ...prev, isPlaying: false, currentTime: 0 }));
+    if (stateRef.current.externalSource === 'youtube') {
+      YouTubeController.stop();
+      setState((prev) => ({ ...prev, isPlaying: false, currentTime: 0 }));
       return;
     }
+
     if (audioEngineRef.current) {
       audioEngineRef.current.stop();
-      setState(prev => ({ ...prev, isPlaying: false, currentTime: 0 }));
+      setState((prev) => ({ ...prev, isPlaying: false, currentTime: 0 }));
     }
-  }, [state.externalSource]);
+  }, []);
 
   const setVolume = useCallback((volume: number) => {
-    if (state.externalSource === 'youtube') {
-      YouTubeController.setVolume(volume);
-      setState(prev => ({ ...prev, volume }));
-      return;
+    const clamped = Math.max(0, Math.min(1, volume));
+
+    if (stateRef.current.externalSource === 'youtube') {
+      YouTubeController.setVolume(clamped);
+    } else {
+      audioEngineRef.current?.setVolume(clamped);
     }
-    if (audioEngineRef.current) {
-      audioEngineRef.current.setVolume(volume);
-      setState(prev => ({ ...prev, volume }));
-    }
-  }, [state.externalSource]);
+
+    setState((prev) => ({ ...prev, volume: clamped }));
+  }, []);
 
   const seekTo = useCallback((time: number) => {
-    if (state.externalSource === 'youtube') {
-      YouTubeController.seekTo(time);
-      setState(prev => ({ ...prev, currentTime: time }));
+    const clamped = Math.max(0, time);
+
+    if (stateRef.current.externalSource === 'youtube') {
+      YouTubeController.seekTo(clamped);
+    } else {
+      audioEngineRef.current?.setCurrentTime(clamped);
+    }
+
+    setState((prev) => ({ ...prev, currentTime: clamped }));
+  }, []);
+
+  // ---------------------------------------------------------------------
+  // Track loading
+  // ---------------------------------------------------------------------
+  const loadTrack = useCallback(async (track: Track) => {
+    const engine = audioEngineRef.current;
+    if (!engine) return;
+
+    setState((prev) => ({
+      ...prev,
+      isLoading: true,
+      error: null,
+      currentTrack: track,
+      externalSource: 'none',
+      currentTime: 0,
+      duration: track.duration || 0,
+    }));
+
+    try {
+      await engine.loadAudio(track.src);
+      applyEngineState();
+
+      const info = engine.getInfo();
+      const duration = engine.getDuration();
+
+      setState((prev) => {
+        const playlistIndex = prev.playlist.findIndex((item) => item.id === track.id);
+        return {
+          ...prev,
+          isLoading: false,
+          duration: duration || prev.duration,
+          audioInfo: info,
+          currentTrackIndex: playlistIndex >= 0 ? playlistIndex : prev.currentTrackIndex,
+        };
+      });
+
+      MediaSessionService.updateMetadata({
+        id: track.id,
+        title: track.title,
+        artist: track.artist,
+        artwork: track.artwork,
+        duration: duration || track.duration || 0,
+      });
+
+      // Start playing as soon as the track is ready.
+      play();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'The track could not be loaded.';
+      setState((prev) => ({ ...prev, isLoading: false, isPlaying: false, error: message }));
+    }
+  }, [applyEngineState, play]);
+
+  const loadYouTube = useCallback(async (url: string, meta?: Partial<Track>, containerId?: string) => {
+    setState((prev) => ({ ...prev, isLoading: true, error: null }));
+
+    try {
+      await YouTubeController.load(containerId ?? YT_PLAYER_CONTAINER_ID, url);
+
+      const track: Track = {
+        id: `yt-${YouTubeController.parseVideoId(url) ?? Date.now()}`,
+        title: meta?.title || 'YouTube Video',
+        artist: meta?.artist || 'YouTube',
+        duration: 0,
+        src: url,
+        artwork: meta?.artwork,
+        source: 'youtube',
+      };
+
+      setState((prev) => ({
+        ...prev,
+        currentTrack: track,
+        externalSource: 'youtube',
+        isLoading: false,
+        isPlaying: true,
+        currentTime: 0,
+        duration: 0,
+      }));
+
+      MediaSessionService.updateMetadata({
+        id: track.id,
+        title: track.title,
+        artist: track.artist,
+        artwork: track.artwork,
+        duration: 0,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'The YouTube video could not be loaded.';
+      setState((prev) => ({ ...prev, isLoading: false, error: message }));
+    }
+  }, []);
+
+  /** Plays a track, routing YouTube entries to the IFrame player. */
+  const playTrack = useCallback(async (track: Track) => {
+    const isYouTube = track.source === 'youtube' || (typeof track.src === 'string' && YouTubeController.isYouTubeUrl(track.src));
+
+    if (isYouTube && typeof track.src === 'string') {
+      await loadYouTube(track.src, {
+        title: track.title,
+        artist: track.artist,
+        artwork: track.artwork,
+      });
+    } else {
+      await loadTrack(track);
+    }
+  }, [loadTrack, loadYouTube]);
+
+  // ---------------------------------------------------------------------
+  // Playlist navigation
+  // ---------------------------------------------------------------------
+  const nextTrack = useCallback(() => {
+    const current = stateRef.current;
+    const { playlist, currentTrackIndex, repeatMode, isShuffled } = current;
+    if (playlist.length === 0) return;
+
+    let nextIndex = -1;
+
+    if (isShuffled && shuffleOrderRef.current.length > 0) {
+      const order = shuffleOrderRef.current;
+      const position = order.indexOf(currentTrackIndex);
+      if (position >= 0 && position + 1 < order.length) {
+        nextIndex = order[position + 1];
+      } else if (repeatMode === 'all') {
+        nextIndex = order[0];
+      }
+    } else {
+      nextIndex = currentTrackIndex + 1;
+      if (nextIndex >= playlist.length) {
+        nextIndex = repeatMode === 'all' ? 0 : -1;
+      }
+    }
+
+    if (nextIndex < 0 || !playlist[nextIndex]) {
+      setState((prev) => ({ ...prev, isPlaying: false }));
+      MediaSessionService.updatePlaybackState('paused');
       return;
     }
-    if (audioEngineRef.current) {
-      audioEngineRef.current.setCurrentTime(time);
-      setState(prev => ({ ...prev, currentTime: time }));
-    }
-  }, [state.externalSource]);
 
-  const setMode = useCallback((mode: AudioPlayerState['mode']) => {
-    setState(prev => ({ ...prev, mode }));
-    
-    // Apply mode-specific EQ settings
-    let newEQ = [...state.equalizerBands];
-    
-    switch (mode) {
-      case 'vocal-enhance':
-        newEQ = equalizerPresets['vocal-enhance'];
-        break;
-      case 'instrument-focus':
-        newEQ = [0, 0, -2, -1, 0, 1, 2, 3, 2, 1];
-        break;
-      case 'bass-boost':
-        newEQ = equalizerPresets['bass-boost'];
-        break;
-      default:
-        newEQ = equalizerPresets.flat;
-        break;
-    }
-    
-    setEqualizerPreset('custom');
-    newEQ.forEach((gain, index) => {
-      setEqualizerBand(index, gain);
-    });
-  }, [state.equalizerBands]);
-
-  const setEqualizerBand = useCallback((index: number, gain: number) => {
-    if (audioEngineRef.current) {
-      audioEngineRef.current.setEqualizerBand(index, gain);
-      setState(prev => ({
-        ...prev,
-        equalizerBands: prev.equalizerBands.map((band, i) => i === index ? gain : band)
-      }));
-    }
-  }, []);
-
-  const setEqualizerPreset = useCallback((preset: string) => {
-    if (preset in equalizerPresets && audioEngineRef.current) {
-      const gains = equalizerPresets[preset as keyof typeof equalizerPresets];
-      audioEngineRef.current.setAllEqualizerBands(gains);
-      setState(prev => ({ ...prev, equalizerBands: [...gains] }));
-    }
-  }, []);
-
-  const updateEffects = useCallback((newEffects: Partial<AudioEffects>) => {
-    const updatedEffects = { ...state.effects, ...newEffects };
-    setState(prev => ({ ...prev, effects: updatedEffects }));
-
-    if (audioEngineRef.current) {
-      if (newEffects.reverb) {
-        audioEngineRef.current.setReverbSettings(updatedEffects.reverb);
-      }
-      if (newEffects.compressor) {
-        audioEngineRef.current.setCompressorSettings(updatedEffects.compressor);
-      }
-      if (newEffects.distortion) {
-        audioEngineRef.current.setDistortionAmount(updatedEffects.distortion.amount);
-      }
-    }
-  }, [state.effects]);
-
-  const getFrequencyData = useCallback((): Uint8Array => {
-    return audioEngineRef.current?.getFrequencyData() || new Uint8Array(0);
-  }, []);
-
-  const getTimeDomainData = useCallback((): Uint8Array => {
-    return audioEngineRef.current?.getTimeDomainData() || new Uint8Array(0);
-  }, []);
-
-  const nextTrack = useCallback(() => {
-    if (state.playlist.length === 0) return;
-    
-    let nextIndex = state.currentTrackIndex + 1;
-    if (nextIndex >= state.playlist.length) {
-      nextIndex = state.repeatMode === 'all' ? 0 : state.playlist.length - 1;
-    }
-    
-    setState(prev => ({ ...prev, currentTrackIndex: nextIndex }));
-    loadTrack(state.playlist[nextIndex]);
-  }, [state.playlist, state.currentTrackIndex, state.repeatMode, loadTrack]);
+    setState((prev) => ({ ...prev, currentTrackIndex: nextIndex }));
+    playTrack(playlist[nextIndex]);
+  }, [playTrack]);
 
   const previousTrack = useCallback(() => {
-    if (state.playlist.length === 0) return;
-    
-    let prevIndex = state.currentTrackIndex - 1;
-    if (prevIndex < 0) {
-      prevIndex = state.repeatMode === 'all' ? state.playlist.length - 1 : 0;
+    const current = stateRef.current;
+    const { playlist, currentTrackIndex, repeatMode, isShuffled } = current;
+    if (playlist.length === 0) return;
+
+    let previousIndex = -1;
+
+    if (isShuffled && shuffleOrderRef.current.length > 0) {
+      const order = shuffleOrderRef.current;
+      const position = order.indexOf(currentTrackIndex);
+      if (position > 0) {
+        previousIndex = order[position - 1];
+      } else if (repeatMode === 'all') {
+        previousIndex = order[order.length - 1];
+      } else {
+        previousIndex = order[0] ?? -1;
+      }
+    } else {
+      previousIndex = currentTrackIndex - 1;
+      if (previousIndex < 0) {
+        previousIndex = repeatMode === 'all' ? playlist.length - 1 : 0;
+      }
     }
-    
-    setState(prev => ({ ...prev, currentTrackIndex: prevIndex }));
-    loadTrack(state.playlist[prevIndex]);
-  }, [state.playlist, state.currentTrackIndex, state.repeatMode, loadTrack]);
 
-  const toggleShuffle = useCallback(() => {
-    setState(prev => ({ ...prev, isShuffled: !prev.isShuffled }));
-  }, []);
+    if (previousIndex < 0 || !playlist[previousIndex]) {
+      setState((prev) => ({ ...prev, isPlaying: false }));
+      return;
+    }
 
-  const toggleRepeat = useCallback(() => {
-    setState(prev => ({
+    setState((prev) => ({ ...prev, currentTrackIndex: previousIndex }));
+    playTrack(playlist[previousIndex]);
+  }, [playTrack]);
+
+  const playTrackAtIndex = useCallback((index: number) => {
+    const { playlist } = stateRef.current;
+    if (index < 0 || index >= playlist.length) return;
+
+    setState((prev) => ({ ...prev, currentTrackIndex: index }));
+    playTrack(playlist[index]);
+  }, [playTrack]);
+
+  // ---------------------------------------------------------------------
+  // Media Session - handlers are installed once and read the latest state
+  // ---------------------------------------------------------------------
+  useEffect(() => {
+    MediaSessionService.setupHandlers({
+      onPlay: () => {
+        if (!stateRef.current.isPlaying) play();
+      },
+      onPause: () => pause(),
+      onNextTrack: () => nextTrack(),
+      onPreviousTrack: () => previousTrack(),
+      onSeekTo: (time) => seekTo(time),
+      onSeekBy: (delta) => seekTo(stateRef.current.currentTime + delta),
+    });
+
+    return () => MediaSessionService.clearSession();
+  }, [nextTrack, pause, play, previousTrack, seekTo]);
+
+  // ---------------------------------------------------------------------
+  // Auto advance when a track finishes
+  // ---------------------------------------------------------------------
+  useEffect(() => {
+    const engine = audioEngineRef.current;
+    if (!engine) return;
+
+    engine.setEndedHandler(() => {
+      const current = stateRef.current;
+
+      if (current.repeatMode === 'one' && current.currentTrack) {
+        seekTo(0);
+        play();
+        return;
+      }
+
+      nextTrack();
+    });
+
+    return () => engine.setEndedHandler(null);
+  }, [nextTrack, play, seekTo]);
+
+  // ---------------------------------------------------------------------
+  // Time synchronisation (throttled to ~10fps to avoid re-rendering at 60fps)
+  // ---------------------------------------------------------------------
+  useEffect(() => {
+    if (!state.isPlaying && state.externalSource !== 'youtube') return;
+
+    let frame = 0;
+    let lastUpdate = 0;
+
+    const tick = (timestamp: number) => {
+      if (timestamp - lastUpdate >= 100) {
+        lastUpdate = timestamp;
+
+        if (stateRef.current.externalSource === 'youtube') {
+          const yt = YouTubeController.getState();
+          setState((prev) => ({
+            ...prev,
+            currentTime: yt.currentTime,
+            duration: yt.duration,
+            isPlaying: yt.playing,
+            error: yt.error ?? prev.error,
+          }));
+          MediaSessionService.updatePosition(yt.currentTime, yt.duration);
+        } else {
+          const engine = audioEngineRef.current;
+          if (engine) {
+            const currentTime = engine.getCurrentTime();
+            const duration = engine.getDuration();
+            setState((prev) => ({
+              ...prev,
+              currentTime,
+              duration: duration || prev.duration,
+            }));
+            MediaSessionService.updatePosition(currentTime, duration);
+          }
+        }
+      }
+
+      frame = requestAnimationFrame(tick);
+    };
+
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [state.isPlaying, state.externalSource]);
+
+  // ---------------------------------------------------------------------
+  // Equalizer / effects
+  // ---------------------------------------------------------------------
+  const setEqualizerBand = useCallback((index: number, gain: number) => {
+    audioEngineRef.current?.setEqualizerBand(index, gain);
+    setState((prev) => ({
       ...prev,
-      repeatMode: prev.repeatMode === 'none' ? 'all' : prev.repeatMode === 'all' ? 'one' : 'none'
+      equalizerPreset: 'custom',
+      equalizerBands: prev.equalizerBands.map((band, i) => (i === index ? gain : band)),
     }));
   }, []);
 
+  const setEqualizerPreset = useCallback((preset: string) => {
+    const gains = equalizerPresets[preset];
+    if (!gains) return;
+
+    audioEngineRef.current?.setAllEqualizerBands(gains);
+    setState((prev) => ({ ...prev, equalizerPreset: preset, equalizerBands: [...gains] }));
+  }, []);
+
+  const setMode = useCallback((mode: PlayMode) => {
+    const preset = MODE_PRESET[mode] ?? 'flat';
+    const gains = equalizerPresets[preset] ?? equalizerPresets.flat;
+
+    audioEngineRef.current?.setAllEqualizerBands(gains);
+    setState((prev) => ({
+      ...prev,
+      mode,
+      equalizerPreset: preset,
+      equalizerBands: [...gains],
+    }));
+  }, []);
+
+  const updateEffects = useCallback((newEffects: Partial<AudioEffects>) => {
+    const updated = { ...stateRef.current.effects, ...newEffects };
+    setState((prev) => ({ ...prev, effects: updated }));
+
+    const engine = audioEngineRef.current;
+    if (!engine) return;
+
+    if (newEffects.reverb) engine.setReverbSettings(updated.reverb);
+    if (newEffects.chorus) engine.setChorusSettings(updated.chorus);
+    if (newEffects.compressor) engine.setCompressorSettings(updated.compressor);
+    if (newEffects.distortion) {
+      engine.setDistortionAmount(updated.distortion.amount);
+      engine.setDistortionOversample(updated.distortion.oversample);
+    }
+  }, []);
+
+  // ---------------------------------------------------------------------
+  // Playlist management
+  // ---------------------------------------------------------------------
   const addToPlaylist = useCallback((track: Track) => {
-    setState(prev => {
-      const existingIds = new Set(prev.playlist.map(t => t.id));
+    setState((prev) => {
+      const existingIds = new Set(prev.playlist.map((t) => t.id));
       let id = track.id || `track-${Date.now()}`;
       if (existingIds.has(id)) {
         const base = id;
@@ -451,40 +590,79 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         while (existingIds.has(`${base}-${counter}`)) counter++;
         id = `${base}-${counter}`;
       }
+
       const item: Track = { ...track, id };
-      return {
-        ...prev,
-        playlist: [...prev.playlist, item]
-      };
+      const playlist = [...prev.playlist, item];
+
+      if (prev.isShuffled) {
+        shuffleOrderRef.current = [...shuffleOrderRef.current, playlist.length - 1];
+      }
+
+      return { ...prev, playlist };
     });
   }, []);
 
   const removeFromPlaylist = useCallback((trackId: string) => {
-    setState(prev => ({
-      ...prev,
-      playlist: prev.playlist.filter(track => track.id !== trackId)
-    }));
-  }, []);
+    setState((prev) => {
+      const removedIndex = prev.playlist.findIndex((track) => track.id === trackId);
+      const playlist = prev.playlist.filter((track) => track.id !== trackId);
 
-  const reorderPlaylist = useCallback((fromIndex: number, toIndex: number) => {
-    setState(prev => {
-      const newPlaylist = [...prev.playlist];
-      const [movedTrack] = newPlaylist.splice(fromIndex, 1);
-      newPlaylist.splice(toIndex, 0, movedTrack);
-      return { ...prev, playlist: newPlaylist };
+      if (prev.isShuffled) {
+        shuffleOrderRef.current = shuffleOrderRef.current
+          .filter((index) => index !== removedIndex)
+          .map((index) => (index > removedIndex ? index - 1 : index));
+      }
+
+      let currentTrackIndex = prev.currentTrackIndex;
+      if (removedIndex >= 0) {
+        if (removedIndex < currentTrackIndex) {
+          currentTrackIndex -= 1;
+        } else if (removedIndex === currentTrackIndex) {
+          currentTrackIndex = -1;
+        }
+      }
+
+      return { ...prev, playlist, currentTrackIndex };
     });
   }, []);
 
-  const playTrackAtIndex = useCallback((index: number) => {
-    if (index >= 0 && index < state.playlist.length) {
-      setState(prev => ({ ...prev, currentTrackIndex: index }));
-      loadTrack(state.playlist[index]);
-    }
-  }, [state.playlist, loadTrack]);
+  const reorderPlaylist = useCallback((fromIndex: number, toIndex: number) => {
+    setState((prev) => {
+      const playlist = [...prev.playlist];
+      if (fromIndex < 0 || fromIndex >= playlist.length) return prev;
+      if (toIndex < 0 || toIndex >= playlist.length) return prev;
+
+      const [moved] = playlist.splice(fromIndex, 1);
+      playlist.splice(toIndex, 0, moved);
+
+      // Keep the shuffle order pointing at the same tracks after a manual reorder.
+      if (prev.isShuffled) {
+        const order = shuffleOrderRef.current.map((index) => {
+          if (index === fromIndex) return toIndex;
+          if (fromIndex < toIndex && index > fromIndex && index <= toIndex) return index - 1;
+          if (fromIndex > toIndex && index >= toIndex && index < fromIndex) return index + 1;
+          return index;
+        });
+        shuffleOrderRef.current = order;
+      }
+
+      let currentTrackIndex = prev.currentTrackIndex;
+      if (currentTrackIndex === fromIndex) {
+        currentTrackIndex = toIndex;
+      } else if (fromIndex < toIndex && currentTrackIndex > fromIndex && currentTrackIndex <= toIndex) {
+        currentTrackIndex -= 1;
+      } else if (fromIndex > toIndex && currentTrackIndex >= toIndex && currentTrackIndex < fromIndex) {
+        currentTrackIndex += 1;
+      }
+
+      return { ...prev, playlist, currentTrackIndex };
+    });
+  }, []);
 
   const clearPlaylist = useCallback(() => {
     stop();
-    setState(prev => ({
+    shuffleOrderRef.current = [];
+    setState((prev) => ({
       ...prev,
       playlist: [],
       currentTrackIndex: -1,
@@ -494,10 +672,45 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }));
   }, [stop]);
 
+  // ---------------------------------------------------------------------
+  // Shuffle / repeat
+  // ---------------------------------------------------------------------
+  const toggleShuffle = useCallback(() => {
+    setState((prev) => {
+      const isShuffled = !prev.isShuffled;
+      shuffleOrderRef.current = isShuffled
+        ? buildShuffleOrder(prev.playlist, prev.currentTrack?.id ?? null)
+        : [];
+      return { ...prev, isShuffled };
+    });
+  }, []);
+
+  const toggleRepeat = useCallback(() => {
+    setState((prev) => ({
+      ...prev,
+      repeatMode: prev.repeatMode === 'none' ? 'all' : prev.repeatMode === 'all' ? 'one' : 'none',
+    }));
+  }, []);
+
+  // ---------------------------------------------------------------------
+  // Data access
+  // ---------------------------------------------------------------------
+  const getFrequencyData = useCallback((): Uint8Array => {
+    return audioEngineRef.current?.getFrequencyData() ?? new Uint8Array(0);
+  }, []);
+
+  const getTimeDomainData = useCallback((): Uint8Array => {
+    return audioEngineRef.current?.getTimeDomainData() ?? new Uint8Array(0);
+  }, []);
+
+  const dismissError = useCallback(() => {
+    setState((prev) => ({ ...prev, error: null }));
+  }, []);
+
   const contextValue: AudioPlayerContextType = {
     ...state,
     loadTrack,
-  loadYouTube,
+    loadYouTube,
     play,
     pause,
     stop,
@@ -516,15 +729,12 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     reorderPlaylist,
     playTrackAtIndex,
     clearPlaylist,
+    dismissError,
     getFrequencyData,
-    getTimeDomainData
+    getTimeDomainData,
   };
 
-  return (
-    <AudioPlayerContext.Provider value={contextValue}>
-      {children}
-    </AudioPlayerContext.Provider>
-  );
+  return <AudioPlayerContext.Provider value={contextValue}>{children}</AudioPlayerContext.Provider>;
 };
 
 export const useAudioPlayer = () => {

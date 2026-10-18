@@ -1,5 +1,5 @@
 // Media Session API service for mobile notifications and lock screen controls
-interface Track {
+export interface MediaSessionTrack {
   id: string;
   title: string;
   artist: string;
@@ -7,91 +7,103 @@ interface Track {
   duration: number;
 }
 
-interface MediaSessionCallbacks {
+export interface MediaSessionCallbacks {
   onPlay: () => void;
   onPause: () => void;
   onNextTrack: () => void;
   onPreviousTrack: () => void;
-  onSeek: (time: number) => void;
+  /** Absolute position in seconds. */
+  onSeekTo: (time: number) => void;
+  /** Relative offset in seconds (negative seeks backwards). */
+  onSeekBy: (delta: number) => void;
 }
 
 export class MediaSessionService {
   private static isSupported(): boolean {
-    return 'mediaSession' in navigator;
+    return typeof navigator !== 'undefined' && 'mediaSession' in navigator;
   }
 
-  static setupMediaSession(track: Track, callbacks: MediaSessionCallbacks): void {
-    if (!this.isSupported()) {
-      console.warn('Media Session API not supported');
-      return;
-    }
+  /** Installs the OS-level transport controls. Safe to call repeatedly. */
+  static setupHandlers(callbacks: MediaSessionCallbacks): void {
+    if (!this.isSupported()) return;
 
-    // Set metadata
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: track.title,
-      artist: track.artist,
-      album: 'Sonic Studio Pro',
-      artwork: track.artwork ? [
-        {
-          src: track.artwork,
-          sizes: '512x512',
-          type: 'image/jpeg'
-        },
-        {
-          src: track.artwork,
-          sizes: '256x256',
-          type: 'image/jpeg'
-        }
-      ] : [
-        {
-          src: '/placeholder.svg',
-          sizes: '512x512',
-          type: 'image/svg+xml'
-        }
-      ]
-    });
-
-    // Set up action handlers
-    navigator.mediaSession.setActionHandler('play', callbacks.onPlay);
-    navigator.mediaSession.setActionHandler('pause', callbacks.onPause);
-    navigator.mediaSession.setActionHandler('nexttrack', callbacks.onNextTrack);
-    navigator.mediaSession.setActionHandler('previoustrack', callbacks.onPreviousTrack);
-    
-    // Seek actions
-    navigator.mediaSession.setActionHandler('seekto', (details) => {
-      if (details.seekTime !== undefined) {
-        callbacks.onSeek(details.seekTime);
+    const safely = (handler: MediaSessionActionHandler | null) => {
+      try {
+        navigator.mediaSession.setActionHandler('play', handler);
+        navigator.mediaSession.setActionHandler('pause', handler);
+        navigator.mediaSession.setActionHandler('nexttrack', handler);
+        navigator.mediaSession.setActionHandler('previoustrack', handler);
+        navigator.mediaSession.setActionHandler('seekto', handler);
+        navigator.mediaSession.setActionHandler('seekforward', handler);
+        navigator.mediaSession.setActionHandler('seekbackward', handler);
+      } catch {
+        /* Some browsers do not support every action. */
       }
-    });
+    };
 
-    navigator.mediaSession.setActionHandler('seekforward', (details) => {
-      const skipTime = details.seekOffset || 10;
-      callbacks.onSeek(skipTime);
-    });
+    try {
+      navigator.mediaSession.setActionHandler('play', callbacks.onPlay);
+      navigator.mediaSession.setActionHandler('pause', callbacks.onPause);
+      navigator.mediaSession.setActionHandler('nexttrack', callbacks.onNextTrack);
+      navigator.mediaSession.setActionHandler('previoustrack', callbacks.onPreviousTrack);
 
-    navigator.mediaSession.setActionHandler('seekbackward', (details) => {
-      const skipTime = details.seekOffset || 10;
-      callbacks.onSeek(-skipTime);
-    });
+      navigator.mediaSession.setActionHandler('seekto', (details) => {
+        if (details.seekTime !== undefined) {
+          callbacks.onSeekTo(details.seekTime);
+        }
+      });
+
+      navigator.mediaSession.setActionHandler('seekforward', (details) => {
+        callbacks.onSeekBy(details.seekOffset || 10);
+      });
+
+      navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+        callbacks.onSeekBy(-(details.seekOffset || 10));
+      });
+    } catch (error) {
+      console.warn('Failed to set media session handlers:', error);
+      safely(null);
+    }
+  }
+
+  /** Publishes the currently loaded track to the OS. */
+  static updateMetadata(track: MediaSessionTrack): void {
+    if (!this.isSupported()) return;
+
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: track.title,
+        artist: track.artist,
+        album: 'Sonic Studio Pro',
+        artwork: track.artwork
+          ? [
+              { src: track.artwork, sizes: '512x512', type: 'image/jpeg' },
+              { src: track.artwork, sizes: '256x256', type: 'image/jpeg' },
+            ]
+          : [{ src: '/placeholder.svg', sizes: '512x512', type: 'image/svg+xml' }],
+      });
+    } catch (error) {
+      console.warn('Failed to update media session metadata:', error);
+    }
   }
 
   static updatePlaybackState(state: 'playing' | 'paused' | 'none'): void {
     if (!this.isSupported()) return;
-    
     navigator.mediaSession.playbackState = state;
   }
 
   static updatePosition(currentTime: number, duration: number, playbackRate = 1): void {
     if (!this.isSupported()) return;
+    if (!Number.isFinite(duration) || duration <= 0) return;
 
     try {
       navigator.mediaSession.setPositionState({
-        duration: duration,
-        playbackRate: playbackRate,
-        position: currentTime
+        duration,
+        playbackRate,
+        position: Math.max(0, currentTime),
       });
-    } catch (error) {
-      console.warn('Failed to set position state:', error);
+    } catch {
+      // setPositionState throws while the media is not seekable - ignore silently.
     }
   }
 
@@ -100,18 +112,22 @@ export class MediaSessionService {
 
     navigator.mediaSession.metadata = null;
     navigator.mediaSession.playbackState = 'none';
-    
-    // Clear all action handlers
+
     const actions: MediaSessionAction[] = [
-      'play', 'pause', 'nexttrack', 'previoustrack', 
-      'seekto', 'seekforward', 'seekbackward'
+      'play',
+      'pause',
+      'nexttrack',
+      'previoustrack',
+      'seekto',
+      'seekforward',
+      'seekbackward',
     ];
-    
-    actions.forEach(action => {
+
+    actions.forEach((action) => {
       try {
         navigator.mediaSession.setActionHandler(action, null);
-      } catch (error) {
-        // Some browsers might not support all actions
+      } catch {
+        /* ignore unsupported actions */
       }
     });
   }

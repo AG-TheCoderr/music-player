@@ -1,25 +1,100 @@
 import React from 'react';
-import { useAudioPlayer } from '../audio/AudioPlayerProvider';
-// DnD temporarily disabled to resolve import issues. We'll fall back to a simple list.
+import { useAudioPlayer, Track } from '../audio/AudioPlayerProvider';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { GripVertical, X } from 'lucide-react';
+import { GripVertical, X, Play, ListMusic } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
-interface Track { id: string; title: string; artist: string }
-const SortableTrackItem: React.FC<{ track: Track; index: number }> = ({ track, index }) => {
-  const { playTrackAtIndex, removeFromPlaylist, currentTrack } = useAudioPlayer();
-  const isPlaying = currentTrack?.id === track.id;
+const formatDuration = (seconds: number): string => {
+  if (!Number.isFinite(seconds) || seconds <= 0) return '--:--';
+  const minutes = Math.floor(seconds / 60);
+  const rest = Math.floor(seconds % 60);
+  return `${minutes}:${rest.toString().padStart(2, '0')}`;
+};
+
+const SortableTrackItem: React.FC<{ track: Track; index: number; isCurrent: boolean; isPlaying: boolean }> = ({
+  track,
+  index,
+  isCurrent,
+  isPlaying,
+}) => {
+  const { playTrackAtIndex, removeFromPlaylist } = useAudioPlayer();
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: track.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
   return (
-    <div className={`flex items-center p-2 rounded-md transition-colors ${isPlaying ? 'bg-audio-active' : 'hover:bg-audio-control'}`}>
-      <Button variant="ghost" size="sm" className="cursor-default" disabled>
-        <GripVertical className="h-5 w-5 text-muted-foreground" />
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        'flex items-center p-2 rounded-md transition-colors group',
+        isCurrent ? 'bg-audio-active' : 'hover:bg-audio-control',
+        isDragging && 'opacity-70 z-10 shadow-lg bg-audio-control'
+      )}
+    >
+      <button
+        type="button"
+        className="cursor-grab active:cursor-grabbing touch-none text-muted-foreground hover:text-foreground transition-colors"
+        aria-label={`Reorder ${track.title}`}
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="h-5 w-5" />
+      </button>
+
+      <button
+        type="button"
+        onClick={() => playTrackAtIndex(index)}
+        className="flex-1 ml-2 text-left min-w-0 group/play"
+        aria-label={`Play ${track.title}`}
+      >
+        <p className={cn('font-semibold text-sm truncate', isCurrent ? 'text-primary-foreground' : 'text-foreground')}>
+          {track.title}
+        </p>
+        <p className={cn('text-xs truncate', isCurrent ? 'text-primary-foreground/80' : 'text-muted-foreground')}>
+          {track.artist}
+          {track.duration ? ` • ${formatDuration(track.duration)}` : ''}
+        </p>
+      </button>
+
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => playTrackAtIndex(index)}
+        aria-label={`Play ${track.title}`}
+        className="ml-2 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+      >
+        <Play className={cn('h-4 w-4', isPlaying && 'text-primary fill-primary')} />
       </Button>
-      <div className="flex-1 ml-2" onClick={() => playTrackAtIndex(index)}>
-        <p className="font-semibold text-sm text-foreground truncate">{track.title}</p>
-        <p className="text-xs text-muted-foreground truncate">{track.artist}</p>
-      </div>
-      <Button variant="ghost" size="icon" onClick={() => removeFromPlaylist(track.id)} className="ml-2">
+
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => removeFromPlaylist(track.id)}
+        aria-label={`Remove ${track.title} from playlist`}
+        className="ml-1 text-muted-foreground hover:text-destructive transition-colors"
+      >
         <X className="h-4 w-4" />
       </Button>
     </div>
@@ -27,26 +102,66 @@ const SortableTrackItem: React.FC<{ track: Track; index: number }> = ({ track, i
 };
 
 export const PlaylistPanel = () => {
-  const { playlist, clearPlaylist } = useAudioPlayer();
+  const { playlist, currentTrack, currentTrackIndex, isPlaying, reorderPlaylist, clearPlaylist } = useAudioPlayer();
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const from = playlist.findIndex((track) => track.id === active.id);
+    const to = playlist.findIndex((track) => track.id === over.id);
+    if (from < 0 || to < 0) return;
+
+    reorderPlaylist(from, to);
+  };
 
   return (
     <Card className="p-4 bg-gradient-surface border-audio-control h-full flex flex-col">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-foreground">Up Next</h3>
-        <Button variant="outline" size="sm" onClick={clearPlaylist} className="bg-audio-control border-border hover:bg-audio-active">
+        <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
+          <ListMusic className="h-4 w-4" />
+          Up Next
+          <span className="text-xs font-normal text-muted-foreground">({playlist.length})</span>
+        </h3>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={clearPlaylist}
+          disabled={playlist.length === 0}
+          className="bg-audio-control border-border hover:bg-audio-active"
+        >
           Clear
         </Button>
       </div>
+
       <ScrollArea className="flex-1">
-        <div className="space-y-2">
-          {playlist.map((track, index) => (
-            <SortableTrackItem key={`${track.id}-${index}`} track={track as any} index={index} />
-          ))}
-        </div>
-        {playlist.length === 0 && (
-          <div className="flex items-center justify-center h-full">
-            <p className="text-muted-foreground">Playlist is empty</p>
+        {playlist.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full py-8 text-center">
+            <ListMusic className="h-8 w-8 text-muted-foreground/60 mb-2" />
+            <p className="text-muted-foreground text-sm">Playlist is empty</p>
+            <p className="text-xs text-muted-foreground/70 mt-1">Search or drop a file to add tracks</p>
           </div>
+        ) : (
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={playlist.map((track) => track.id)} strategy={verticalListSortingStrategy}>
+              <div className="space-y-1">
+                {playlist.map((track, index) => (
+                  <SortableTrackItem
+                    key={track.id}
+                    track={track}
+                    index={index}
+                    isCurrent={index === currentTrackIndex || track.id === currentTrack?.id}
+                    isPlaying={isPlaying && (index === currentTrackIndex || track.id === currentTrack?.id)}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
         )}
       </ScrollArea>
     </Card>

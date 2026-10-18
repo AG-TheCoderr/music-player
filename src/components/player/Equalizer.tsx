@@ -7,7 +7,7 @@ import { useAudioPlayer } from '../audio/AudioPlayerProvider';
 
 const frequencies = ['32Hz', '64Hz', '125Hz', '250Hz', '500Hz', '1kHz', '2kHz', '4kHz', '8kHz', '16kHz'];
 
-const presets = {
+const presetLabels: Record<string, string> = {
   flat: 'Flat',
   rock: 'Rock',
   pop: 'Pop',
@@ -15,11 +15,13 @@ const presets = {
   classical: 'Classical',
   electronic: 'Electronic',
   'bass-boost': 'Bass Boost',
-  'vocal-enhance': 'Vocal Enhance'
+  'vocal-enhance': 'Vocal Enhance',
+  'instrument-focus': 'Instrument Focus',
+  custom: 'Custom',
 };
 
 export const Equalizer: React.FC = () => {
-  const { equalizerBands, setEqualizerBand, setEqualizerPreset } = useAudioPlayer();
+  const { equalizerBands, equalizerPreset, setEqualizerBand, setEqualizerPreset } = useAudioPlayer();
 
   const handleBandChange = (index: number, value: number[]) => {
     setEqualizerBand(index, value[0]);
@@ -37,19 +39,21 @@ export const Equalizer: React.FC = () => {
     <Card className="p-6 bg-gradient-surface border-audio-control">
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
           <h3 className="text-lg font-semibold text-foreground">Equalizer</h3>
           <div className="flex items-center space-x-2">
-            <Select onValueChange={handlePresetChange}>
-              <SelectTrigger className="w-32 bg-audio-control border-border">
+            <Select value={equalizerPreset} onValueChange={handlePresetChange}>
+              <SelectTrigger className="w-40 bg-audio-control border-border">
                 <SelectValue placeholder="Preset" />
               </SelectTrigger>
               <SelectContent>
-                {Object.entries(presets).map(([key, label]) => (
-                  <SelectItem key={key} value={key}>
-                    {label}
-                  </SelectItem>
-                ))}
+                {Object.entries(presetLabels)
+                  .filter(([key]) => key !== 'custom')
+                  .map(([key, label]) => (
+                    <SelectItem key={key} value={key}>
+                      {label}
+                    </SelectItem>
+                  ))}
               </SelectContent>
             </Select>
             <Button
@@ -70,7 +74,7 @@ export const Equalizer: React.FC = () => {
               <div className="h-32 flex items-end">
                 <Slider
                   orientation="vertical"
-                  value={[equalizerBands[index]]}
+                  value={[equalizerBands[index] ?? 0]}
                   min={-12}
                   max={12}
                   step={0.5}
@@ -81,7 +85,8 @@ export const Equalizer: React.FC = () => {
               <div className="text-center">
                 <div className="text-xs font-medium text-foreground">{freq}</div>
                 <div className="text-[10px] text-muted-foreground">
-                  {equalizerBands[index] > 0 ? '+' : ''}{equalizerBands[index].toFixed(1)}dB
+                  {(equalizerBands[index] ?? 0) > 0 ? '+' : ''}
+                  {(equalizerBands[index] ?? 0).toFixed(1)}dB
                 </div>
               </div>
             </div>
@@ -99,7 +104,7 @@ export const Equalizer: React.FC = () => {
                 style={{
                   width: `${100 / equalizerBands.length - 1}%`,
                   height: `${height}%`,
-                  animationDelay: `${index * 100}ms`
+                  animationDelay: `${index * 100}ms`,
                 }}
               />
             );

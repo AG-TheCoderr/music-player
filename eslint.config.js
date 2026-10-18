@@ -25,5 +25,18 @@ export default tseslint.config(
       ],
       "@typescript-eslint/no-unused-vars": "off",
     },
+  },
+  {
+    // Supabase Edge Functions run on Deno and are not part of the Vite build.
+    files: ["supabase/functions/**/*.ts"],
+    languageOptions: {
+      globals: { ...globals.deno },
+    },
+    rules: {
+      "@typescript-eslint/ban-ts-comment": "off",
+      "@typescript-eslint/no-explicit-any": "off",
+      "no-empty": ["error", { allowEmptyCatch: true }],
+      "prefer-const": "off",
+    },
   }
 );
