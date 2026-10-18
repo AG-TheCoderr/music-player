@@ -97,6 +97,27 @@ export class AudioEngine {
   private frequencyBuffer: Uint8Array | null = null;
   private timeDomainBuffer: Uint8Array | null = null;
 
+  /**
+   * Moves an AudioParam to a new value without a click.
+   *
+   * Setting `param.value` jumps the signal, which is audible as a pop on every volume or
+   * slider change. A short exponential ramp does the same thing smoothly.
+   */
+  private ramp(param: AudioParam, value: number, timeConstant = 0.015): void {
+    const ctx = this.audioContext;
+    if (!ctx) {
+      param.value = value;
+      return;
+    }
+
+    try {
+      param.cancelScheduledValues(ctx.currentTime);
+      param.setTargetAtTime(value, ctx.currentTime, timeConstant);
+    } catch {
+      param.value = value;
+    }
+  }
+
   private endedHandler: (() => void) | null = null;
   private errorHandler: ((error: Error) => void) | null = null;
 
@@ -258,6 +279,14 @@ export class AudioEngine {
     element.crossOrigin = 'anonymous';
     element.preload = 'auto';
 
+    // Safari refuses to play a media element that is not part of the document, so it is
+    // attached hidden instead of being kept in memory only.
+    element.setAttribute('aria-hidden', 'true');
+    element.style.display = 'none';
+    if (typeof document !== 'undefined' && document.body) {
+      document.body.appendChild(element);
+    }
+
     this.currentAudio = element;
 
     element.addEventListener('ended', () => {
@@ -291,7 +320,9 @@ export class AudioEngine {
     }
 
     this.sourceNode = ctx.createMediaElementSource(element);
-    this.sourceNode.connect(this.equalizerNodes[0] ?? this.masterGain!);
+    const entryPoint = this.equalizerNodes[0] ?? this.masterGain;
+    if (!entryPoint) throw new Error('The audio graph is not ready.');
+    this.sourceNode.connect(entryPoint);
 
     await metadata;
   }
@@ -343,6 +374,7 @@ export class AudioEngine {
       this.currentAudio.pause();
       this.currentAudio.removeAttribute('src');
       this.currentAudio.load();
+      this.currentAudio.remove();
       this.currentAudio = null;
     }
 
@@ -357,9 +389,16 @@ export class AudioEngine {
     if (this.audioContext?.state === 'suspended') {
       this.audioContext.resume().catch(() => undefined);
     }
-    // The returned promise rejects when autoplay is blocked - handle it quietly.
-    this.currentAudio.play().catch((error) => {
-      this.errorHandler?.(error instanceof Error ? error : new Error('Playback was blocked by the browser.'));
+    // The returned promise rejects when autoplay is blocked - report it in plain language.
+    this.currentAudio.play().catch((error: unknown) => {
+      const name = (error as { name?: string } | null)?.name;
+      const message =
+        name === 'NotAllowedError'
+          ? 'Playback was blocked by the browser. Press play again to start the audio.'
+          : error instanceof Error
+            ? error.message
+            : 'The track could not be started.';
+      this.errorHandler?.(new Error(message));
     });
   }
 
@@ -376,13 +415,14 @@ export class AudioEngine {
 
   setVolume(volume: number): void {
     if (this.masterGain) {
-      this.masterGain.gain.value = Math.max(0, Math.min(1, volume));
+      this.ramp(this.masterGain.gain, Math.max(0, Math.min(1, volume)));
     }
   }
 
   setEqualizerBand(index: number, gain: number): void {
-    if (this.equalizerNodes[index]) {
-      this.equalizerNodes[index].gain.value = Math.max(-24, Math.min(24, gain));
+    const node = this.equalizerNodes[index];
+    if (node) {
+      this.ramp(node.gain, Math.max(-24, Math.min(24, gain)), 0.02);
     }
   }
 
@@ -393,8 +433,8 @@ export class AudioEngine {
   setReverbSettings(settings: AudioEffects['reverb']): void {
     if (!this.reverbDry || !this.reverbWet) return;
 
-    this.reverbDry.gain.value = Math.max(0, Math.min(1, settings.dryLevel));
-    this.reverbWet.gain.value = Math.max(0, Math.min(1, settings.wetLevel));
+    this.ramp(this.reverbDry.gain, Math.max(0, Math.min(1, settings.dryLevel)), 0.05);
+    this.ramp(this.reverbWet.gain, Math.max(0, Math.min(1, settings.wetLevel)), 0.05);
 
     const changed =
       this.lastReverbParams.roomSize !== settings.roomSize || this.lastReverbParams.damping !== settings.damping;
@@ -419,27 +459,27 @@ export class AudioEngine {
     if (!this.chorusDry || !this.chorusWet || !this.chorusDelay) return;
 
     const wet = Math.max(0, Math.min(1, settings.wetLevel));
-    this.chorusWet.gain.value = wet;
-    this.chorusDry.gain.value = 1 - wet;
+    this.ramp(this.chorusWet.gain, wet, 0.05);
+    this.ramp(this.chorusDry.gain, 1 - wet, 0.05);
 
     if (this.chorusLfo) {
-      this.chorusLfo.frequency.value = Math.max(0.05, Math.min(20, settings.rate));
+      this.ramp(this.chorusLfo.frequency, Math.max(0.05, Math.min(20, settings.rate)), 0.05);
     }
     if (this.chorusLfoDepth) {
-      this.chorusLfoDepth.gain.value = Math.max(0, Math.min(1, settings.depth)) * 0.008;
+      this.ramp(this.chorusLfoDepth.gain, Math.max(0, Math.min(1, settings.depth)) * 0.008, 0.05);
     }
     if (this.chorusFeedback) {
-      this.chorusFeedback.gain.value = Math.max(0, Math.min(0.85, settings.feedback));
+      this.ramp(this.chorusFeedback.gain, Math.max(0, Math.min(0.85, settings.feedback)), 0.05);
     }
   }
 
   setCompressorSettings(settings: AudioEffects['compressor']): void {
     if (!this.compressorNode) return;
-    this.compressorNode.threshold.value = settings.threshold;
-    this.compressorNode.knee.value = settings.knee;
-    this.compressorNode.ratio.value = settings.ratio;
-    this.compressorNode.attack.value = settings.attack;
-    this.compressorNode.release.value = settings.release;
+    this.ramp(this.compressorNode.threshold, settings.threshold, 0.05);
+    this.ramp(this.compressorNode.knee, settings.knee, 0.05);
+    this.ramp(this.compressorNode.ratio, settings.ratio, 0.05);
+    this.ramp(this.compressorNode.attack, settings.attack, 0.05);
+    this.ramp(this.compressorNode.release, settings.release, 0.05);
   }
 
   setDistortionAmount(amount: number): void {

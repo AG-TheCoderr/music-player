@@ -10,22 +10,34 @@
     />
     <meta name="author" content="Sonic Studio Pro" />
     <meta name="theme-color" content="#0a0a0a" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="apple-touch-icon" href="/placeholder.svg" />
 
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Sonic Studio Pro" />
     <meta property="og:title" content="Sonic Studio Pro" />
     <meta
       property="og:description"
       content="A browser based music player with a 10-band equalizer, audio effects, live visualiser and playlist."
     />
-    <meta property="og:type" content="website" />
-    <meta property="og:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
-
+    <meta property="og:image" content="/og-image.jpg" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:site" content="@lovable_dev" />
-    <meta name="twitter:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
+    <meta name="twitter:title" content="Sonic Studio Pro" />
+    <meta
+      name="twitter:description"
+      content="A browser based music player with a 10-band equalizer, audio effects, live visualiser and playlist."
+    />
+    <meta name="twitter:image" content="/og-image.jpg" />
   </head>
 
   <body>
     <div id="root"></div>
+    <noscript>
+      <div style="padding: 2rem; font-family: system-ui, sans-serif; color: #e5e7eb; background: #0a0a0a">
+        <h1 style="font-size: 1.25rem">Sonic Studio Pro needs JavaScript</h1>
+        <p>The player runs entirely in the browser, so JavaScript has to be enabled.</p>
+      </div>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

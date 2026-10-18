@@ -33,7 +33,14 @@ let nodeCounter = 0;
 class FakeParam {
   constructor(value = 0) {
     this.value = value;
+    this.ramped = 0;
   }
+  /** The engine ramps parameters instead of jumping them, so the target is recorded. */
+  setTargetAtTime(value) {
+    this.value = value;
+    this.ramped++;
+  }
+  cancelScheduledValues() {}
 }
 
 class FakeNode {
@@ -238,6 +245,11 @@ checks.push(['chorus LFO rate applied', lfoFreq === 2.5]);
 checks.push(['distortion curve rebuilt', typeof distortionAmount === 'number' && Number.isFinite(distortionAmount)]);
 checks.push(['oversample applied', engine.distortionNode?.oversample === '2x']);
 checks.push(['volume applied', engine.masterGain?.gain.value === 0.5]);
+// Jumping a gain produces an audible click, so every change has to be ramped.
+checks.push(['the volume is ramped, not jumped', (engine.masterGain?.gain.ramped ?? 0) > 0]);
+checks.push(['the equalizer gain is ramped', (engine.equalizerNodes?.[0]?.gain.ramped ?? 0) > 0]);
+checks.push(['the reverb wet gain is ramped', (engine.reverbWet?.gain.ramped ?? 0) > 0]);
+checks.push(['the chorus dry gain is ramped', (engine.chorusDry?.gain.ramped ?? 0) > 0]);
 checks.push(['EQ band applied', engine.equalizerNodes[0].gain.value === 6]);
 
 // The impulse response is generated on a short debounce.

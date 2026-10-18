@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { usePlayerActions, usePlayerSelector, Track } from '../audio/AudioPlayerProvider';
 import {
   DndContext,
@@ -67,7 +67,7 @@ const SortableTrackItem: React.FC<{ track: Track; index: number; isCurrent: bool
         type="button"
         onClick={() => playTrackAtIndex(index)}
         className="flex-1 ml-2 text-left min-w-0 group/play"
-        aria-label={`Play ${track.title}`}
+        aria-label={`Play ${track.title} by ${track.artist}`}
       >
         <p className={cn('font-semibold text-sm truncate', isCurrent ? 'text-primary-foreground' : 'text-foreground')}>
           {track.title}
@@ -78,15 +78,17 @@ const SortableTrackItem: React.FC<{ track: Track; index: number; isCurrent: bool
         </p>
       </button>
 
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={() => playTrackAtIndex(index)}
-        aria-label={`Play ${track.title}`}
-        className="ml-2 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
-      >
-        <Play className={cn('h-4 w-4', isPlaying && 'text-primary fill-primary')} />
-      </Button>
+      {isPlaying && (
+        <span className="ml-2 flex items-end gap-0.5 h-4" aria-hidden>
+          {[0, 1, 2].map((bar) => (
+            <span
+              key={bar}
+              className="w-0.5 rounded-full bg-primary animate-equalizer"
+              style={{ height: `${40 + bar * 25}%`, animationDelay: `${bar * 0.15}s` }}
+            />
+          ))}
+        </span>
+      )}
 
       <Button
         variant="ghost"
@@ -108,6 +110,17 @@ export const PlaylistPanel = () => {
   const currentTrackIndex = usePlayerSelector((state) => state.currentTrackIndex);
   const isPlaying = usePlayerSelector((state) => state.isPlaying);
 
+  // Clearing the playlist cannot be undone, so the button asks for a second click.
+  const [confirmClear, setConfirmClear] = useState(false);
+
+  useEffect(() => {
+    if (!confirmClear) return;
+    const timer = setTimeout(() => setConfirmClear(false), 4000);
+    return () => clearTimeout(timer);
+  }, [confirmClear]);
+
+  const totalDuration = playlist.reduce((total, track) => total + (track.duration || 0), 0);
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -126,21 +139,37 @@ export const PlaylistPanel = () => {
 
   return (
     <Card className="p-4 bg-gradient-surface border-audio-control h-full flex flex-col">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 gap-2">
         <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
           <ListMusic className="h-4 w-4" />
           Up Next
           <span className="text-xs font-normal text-muted-foreground">({playlist.length})</span>
         </h3>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={clearPlaylist}
-          disabled={playlist.length === 0}
-          className="bg-audio-control border-border hover:bg-audio-active"
-        >
-          Clear
-        </Button>
+        <div className="flex items-center gap-2">
+          {totalDuration > 0 && (
+            <span className="text-xs text-muted-foreground tabular-nums">{formatDuration(totalDuration)}</span>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              if (confirmClear) {
+                clearPlaylist();
+                setConfirmClear(false);
+              } else {
+                setConfirmClear(true);
+              }
+            }}
+            disabled={playlist.length === 0}
+            aria-label={confirmClear ? 'Confirm clearing the playlist' : 'Clear the playlist'}
+            className={cn(
+              'bg-audio-control border-border hover:bg-audio-active',
+              confirmClear && 'border-destructive text-destructive hover:text-destructive'
+            )}
+          >
+            {confirmClear ? 'Sure?' : 'Clear'}
+          </Button>
+        </div>
       </div>
 
       <ScrollArea className="flex-1">

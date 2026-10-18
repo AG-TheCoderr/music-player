@@ -160,7 +160,18 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }
   const store = storeRef.current;
 
-  const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
+  // The provider only needs these two flags. Subscribing to the whole state would re-render
+  // the provider ten times a second while a track plays.
+  const isPlaying = useSyncExternalStore(
+    store.subscribe,
+    () => store.getState().isPlaying,
+    () => store.getState().isPlaying
+  );
+  const externalSource = useSyncExternalStore(
+    store.subscribe,
+    () => store.getState().externalSource,
+    () => store.getState().externalSource
+  );
 
   // ---------------------------------------------------------------------
   // Engine lifecycle
@@ -365,11 +376,20 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
         store.setState((prev) => {
           const playlistIndex = prev.playlist.findIndex((item) => item.id === track.id);
+
+          // The real duration is only known once the file has been decoded - write it back so
+          // the playlist does not keep showing "0:00".
+          const playlist =
+            duration && playlistIndex >= 0 && prev.playlist[playlistIndex].duration !== duration
+              ? prev.playlist.map((item, index) => (index === playlistIndex ? { ...item, duration } : item))
+              : prev.playlist;
+
           return {
             ...prev,
             isLoading: false,
             duration: duration || prev.duration,
             audioInfo: info,
+            playlist,
             currentTrackIndex: playlistIndex >= 0 ? playlistIndex : prev.currentTrackIndex,
           };
         });
@@ -575,7 +595,7 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   // Time synchronisation (throttled to ~10fps)
   // ---------------------------------------------------------------------
   useEffect(() => {
-    if (!state.isPlaying && state.externalSource !== 'youtube') return;
+    if (!isPlaying && externalSource !== 'youtube') return;
 
     let frame = 0;
     let lastUpdate = 0;
@@ -614,7 +634,7 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [state.isPlaying, state.externalSource, store]);
+  }, [isPlaying, externalSource, store]);
 
   // ---------------------------------------------------------------------
   // Equalizer / effects
@@ -873,20 +893,4 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       <PlayerActionsContext.Provider value={actions}>{children}</PlayerActionsContext.Provider>
     </PlayerStoreContext.Provider>
   );
-};
-
-/**
- * Convenience hook that returns the whole state plus the actions.
- *
- * Prefer `usePlayerSelector` and `usePlayerActions` in components that only need a slice -
- * this hook re-renders on every state change.
- */
-export const useAudioPlayer = () => {
-  const state = useSyncExternalStore(
-    usePlayerStore().subscribe,
-    usePlayerStore().getState,
-    usePlayerStore().getState
-  );
-  const actions = usePlayerActions();
-  return { ...state, ...actions };
 };

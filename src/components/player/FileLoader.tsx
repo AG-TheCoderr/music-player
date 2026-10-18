@@ -177,9 +177,11 @@ export const FileLoader: React.FC = () => {
         </div>
 
         {/* Drag & Drop Area */}
-        <div
+        <button
+          type="button"
           className={`
-            border-2 border-dashed rounded-lg p-8 text-center transition-smooth cursor-pointer
+            w-full border-2 border-dashed rounded-lg p-8 text-center transition-smooth cursor-pointer
+            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
             ${isDragging ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50 hover:bg-primary/5'}
           `}
           onDragOver={handleDragOver}
@@ -202,7 +204,7 @@ export const FileLoader: React.FC = () => {
               <p className="text-sm text-muted-foreground">or click to browse • MP3, WAV, OGG, FLAC, M4A</p>
             </div>
           </div>
-        </div>
+        </button>
 
         <input
           ref={fileInputRef}
