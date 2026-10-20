@@ -1,0 +1,14 @@
+{
+  "name": "Sonic Studio Pro",
+  "short_name": "SonicPro",
+  "description": "Professional browser music player with equalizer, effects and visualiser",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
+  "icons": [
+    { "src": "/favicon.ico", "sizes": "48x48", "type": "image/x-icon" },
+    { "src": "/placeholder.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "any maskable" },
+    { "src": "/og-image.jpg", "sizes": "1199x630", "type": "image/jpeg", "purpose": "any" }
+  ]
+}
