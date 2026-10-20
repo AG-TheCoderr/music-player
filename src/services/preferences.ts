@@ -29,6 +29,71 @@ function readNumberArray(value: unknown, length: number): number[] | null {
   return value as number[];
 }
 
+const PLAY_MODES: PlayMode[] = ['normal', 'vocal-enhance', 'instrument-focus', 'bass-boost'];
+const REPEAT_MODES: RepeatMode[] = ['none', 'one', 'all'];
+
+const OVERSAMPLE_TYPES: OverSampleType[] = ['none', '2x', '4x'];
+
+/**
+ * Reads the four effect groups.
+ *
+ * Every group is restored - before, only the reverb survived a reload and the chorus,
+ * the distortion and the compressor were silently reset.
+ */
+function readEffects(value: unknown): AudioEffects | null {
+  if (!isRecord(value)) return null;
+
+  const effects: AudioEffects = {
+    reverb: { roomSize: 0, damping: 0, wetLevel: 0, dryLevel: 0 },
+    chorus: { rate: 0, depth: 0, feedback: 0, wetLevel: 0 },
+    distortion: { amount: 0, oversample: '4x' },
+    compressor: { threshold: 0, knee: 0, ratio: 0, attack: 0, release: 0 },
+  };
+
+  const reverb = value.reverb;
+  if (isRecord(reverb)) {
+    effects.reverb = {
+      roomSize: clamp(Number(reverb.roomSize), 0, 1),
+      damping: clamp(Number(reverb.damping), 0, 1),
+      wetLevel: clamp(Number(reverb.wetLevel), 0, 1),
+      dryLevel: clamp(Number(reverb.dryLevel), 0, 1),
+    };
+  }
+
+  const chorus = value.chorus;
+  if (isRecord(chorus)) {
+    effects.chorus = {
+      rate: clamp(Number(chorus.rate), 0.05, 20),
+      depth: clamp(Number(chorus.depth), 0, 1),
+      feedback: clamp(Number(chorus.feedback), 0, 0.85),
+      wetLevel: clamp(Number(chorus.wetLevel), 0, 1),
+    };
+  }
+
+  const distortion = value.distortion;
+  if (isRecord(distortion)) {
+    effects.distortion = {
+      amount: clamp(Number(distortion.amount), 0, 100),
+      oversample: OVERSAMPLE_TYPES.includes(distortion.oversample as OverSampleType)
+        ? (distortion.oversample as OverSampleType)
+        : '4x',
+    };
+  }
+
+  const compressor = value.compressor;
+  if (isRecord(compressor)) {
+    effects.compressor = {
+      threshold: clamp(Number(compressor.threshold), -100, 0),
+      knee: clamp(Number(compressor.knee), 0, 40),
+      ratio: clamp(Number(compressor.ratio), 1, 20),
+      attack: clamp(Number(compressor.attack), 0, 1),
+      release: clamp(Number(compressor.release), 0, 1),
+    };
+  }
+
+  return effects;
+}
+
 /** Reads the stored preferences, ignoring anything malformed. */
 export function loadPreferences(): Partial<PersistedPreferences> | null {
   if (typeof localStorage === 'undefined') return null;
@@ -53,24 +118,16 @@ export function loadPreferences(): Partial<PersistedPreferences> | null {
       result.equalizerPreset = parsed.equalizerPreset;
     }
 
-    if (isRecord(parsed.effects)) {
-      const effects = parsed.effects as Partial<AudioEffects>;
-      if (isRecord(effects.reverb)) {
-        result.effects = {
-          ...(result.effects as AudioEffects),
-          reverb: {
-            roomSize: clamp(Number(effects.reverb.roomSize), 0, 1),
-            damping: clamp(Number(effects.reverb.damping), 0, 1),
-            wetLevel: clamp(Number(effects.reverb.wetLevel), 0, 1),
-            dryLevel: clamp(Number(effects.reverb.dryLevel), 0, 1),
-          },
-        } as AudioEffects;
-      }
-    }
+    const effects = readEffects(parsed.effects);
+    if (effects) result.effects = effects;
 
-    if (typeof parsed.mode === 'string') result.mode = parsed.mode as PlayMode;
+    if (typeof parsed.mode === 'string' && PLAY_MODES.includes(parsed.mode as PlayMode)) {
+      result.mode = parsed.mode as PlayMode;
+    }
     if (typeof parsed.isShuffled === 'boolean') result.isShuffled = parsed.isShuffled;
-    if (typeof parsed.repeatMode === 'string') result.repeatMode = parsed.repeatMode as RepeatMode;
+    if (typeof parsed.repeatMode === 'string' && REPEAT_MODES.includes(parsed.repeatMode as RepeatMode)) {
+      result.repeatMode = parsed.repeatMode as RepeatMode;
+    }
 
     if (Array.isArray(parsed.playlist)) {
       const playlist = parsed.playlist.filter(
