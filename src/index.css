@@ -2,74 +2,70 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
-*/
+/*
+ * Design tokens. Every colour is HSL so the alpha channel can be changed in CSS.
+ * The spectrum scale (red, amber, green, cyan, blue, magenta) is the one accent system.
+ */
 
 @layer base {
   :root {
-    --background: 0 0% 0%;
-    --foreground: 280 15% 95%;
+    --background: 0 0% 2%;
+    --foreground: 0 0% 93%;
 
-    --card: 0 0% 2%;
-    --card-foreground: 280 15% 95%;
+    --card: 0 0% 4%;
+    --card-foreground: 0 0% 93%;
 
-    --popover: 0 0% 2%;
-    --popover-foreground: 280 15% 95%;
+    --popover: 0 0% 4%;
+    --popover-foreground: 0 0% 93%;
 
-    --primary: 280 100% 70%;
-    --primary-foreground: 0 0% 0%;
-    --primary-glow: 280 100% 80%;
+    --primary: 195 100% 58%;
+    --primary-foreground: 0 0% 2%;
+    --primary-glow: 195 100% 75%;
 
-    --secondary: 0 0% 8%;
-    --secondary-foreground: 280 15% 95%;
+    --secondary: 0 0% 9%;
+    --secondary-foreground: 0 0% 93%;
 
-    --muted: 0 0% 8%;
-    --muted-foreground: 280 10% 60%;
+    --muted: 0 0% 9%;
+    --muted-foreground: 0 0% 55%;
 
-    --accent: 315 100% 65%;
-    --accent-foreground: 0 0% 0%;
+    --accent: 320 100% 64%;
+    --accent-foreground: 0 0% 2%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 280 15% 95%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
 
-    --border: 0 0% 12%;
+    --border: 0 0% 13%;
     --input: 0 0% 8%;
-    --ring: 280 100% 70%;
+    --ring: 195 100% 58%;
 
-    /* Audio Player Theme */
-    --audio-surface: 0 0% 4%;
-    --audio-control: 0 0% 10%;
-    --audio-active: 280 100% 70%;
-    --audio-inactive: 280 10% 40%;
-    --audio-track: 0 0% 8%;
-    --audio-progress: 280 100% 70%;
-    
-    /* Gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(280 100% 70%), hsl(315 100% 65%));
-    --gradient-surface: linear-gradient(135deg, hsl(0 0% 2%), hsl(0 0% 4%));
-    --gradient-glow: linear-gradient(135deg, hsl(280 100% 70% / 0.3), hsl(315 100% 65% / 0.3));
-    
-    /* Shadows */
-    --shadow-glow: 0 0 50px hsl(280 100% 70% / 0.4);
-    --shadow-card: 0 8px 32px hsl(0 0% 0% / 0.6);
-    
-    /* Animations */
-    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    --transition-bounce: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-    
-    /* Rainbow animation colors */
-    --rainbow-1: 0 100% 60%;     /* Red */
-    --rainbow-2: 60 100% 60%;    /* Yellow */
-    --rainbow-3: 120 100% 60%;   /* Green */
-    --rainbow-4: 180 100% 60%;   /* Cyan */
-    --rainbow-5: 240 100% 60%;   /* Blue */
-    --rainbow-6: 300 100% 60%;   /* Magenta */
+    /* Audio player surfaces */
+    --audio-surface: 0 0% 3%;
+    --audio-control: 0 0% 8%;
+    --audio-active: 195 100% 58%;
+    --audio-inactive: 0 0% 40%;
+    --audio-track: 0 0% 6%;
+    --audio-progress: 195 100% 58%;
 
-    --radius: 0.5rem;
+    --gradient-primary: linear-gradient(
+      100deg,
+      hsl(352 100% 62%),
+      hsl(38 100% 60%) 22%,
+      hsl(146 90% 52%) 46%,
+      hsl(195 100% 58%) 68%,
+      hsl(270 100% 70%) 86%,
+      hsl(330 100% 65%)
+    );
+    --gradient-surface: linear-gradient(160deg, hsl(0 0% 7% / 0.86), hsl(0 0% 3% / 0.92));
+    --gradient-glow: linear-gradient(120deg, hsl(195 100% 58% / 0.25), hsl(320 100% 64% / 0.25));
+
+    --shadow-glow: 0 0 40px hsl(195 100% 58% / 0.25);
+    --shadow-card: 0 18px 40px -20px hsl(0 0% 0% / 0.85);
+
+    --transition-smooth: all 0.35s cubic-bezier(0.2, 0.7, 0.2, 1);
+    --transition-bounce: all 0.45s cubic-bezier(0.34, 1.4, 0.64, 1);
+
+    --radius: 0.75rem;
   }
-
-
 }
 
 @layer base {
@@ -77,52 +73,195 @@ All colors MUST be HSL.
     @apply border-border;
   }
 
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
   body {
     @apply bg-background text-foreground;
   }
-}
 
-/* Rainbow border animation */
-@keyframes rainbow-border {
-  0% {
-    border-color: hsl(var(--rainbow-1));
-    box-shadow: 0 0 20px hsl(var(--rainbow-1) / 0.5);
+  ::selection {
+    background: hsl(var(--primary) / 0.35);
+    color: hsl(var(--foreground));
   }
-  16.66% {
-    border-color: hsl(var(--rainbow-2));
-    box-shadow: 0 0 20px hsl(var(--rainbow-2) / 0.5);
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(0 0% 22%) transparent;
   }
-  33.33% {
-    border-color: hsl(var(--rainbow-3));
-    box-shadow: 0 0 20px hsl(var(--rainbow-3) / 0.5);
+
+  button:not(:disabled) {
+    transition:
+      transform 0.2s cubic-bezier(0.2, 0.7, 0.2, 1),
+      background-color 0.3s,
+      box-shadow 0.3s,
+      color 0.3s,
+      border-color 0.3s;
   }
-  50% {
-    border-color: hsl(var(--rainbow-4));
-    box-shadow: 0 0 20px hsl(var(--rainbow-4) / 0.5);
-  }
-  66.66% {
-    border-color: hsl(var(--rainbow-5));
-    box-shadow: 0 0 20px hsl(var(--rainbow-5) / 0.5);
-  }
-  83.33% {
-    border-color: hsl(var(--rainbow-6));
-    box-shadow: 0 0 20px hsl(var(--rainbow-6) / 0.5);
-  }
-  100% {
-    border-color: hsl(var(--rainbow-1));
-    box-shadow: 0 0 20px hsl(var(--rainbow-1) / 0.5);
+
+  button:not(:disabled):active {
+    transform: scale(0.97);
   }
 }
 
-.rainbow-border {
-  animation: rainbow-border 3s linear infinite;
-  border-width: 2px;
-  border-style: solid;
+/* The angle of the conic RGB edge. Registered so it can be animated. */
+@property --rgb-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes rgb-spin {
+  to {
+    --rgb-angle: 360deg;
+  }
+}
+
+@keyframes rgb-flow {
+  to {
+    background-position: 200% center;
+  }
+}
+
+@keyframes tab-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
+@keyframes grain-shift {
+  0% { transform: translate(0, 0); }
+  20% { transform: translate(-3%, 2%); }
+  40% { transform: translate(2%, -3%); }
+  60% { transform: translate(-2%, -1%); }
+  80% { transform: translate(3%, 3%); }
+  100% { transform: translate(0, 0); }
+}
+
+/* A panel. The RGB edge only lights up while the panel is hovered or has focus. */
+.panel {
+  position: relative;
+  isolation: isolate;
+  border: 1px solid hsl(0 0% 100% / 0.07);
+  border-radius: var(--radius);
+  background: var(--gradient-surface);
+  box-shadow:
+    inset 0 1px 0 hsl(0 0% 100% / 0.04),
+    var(--shadow-card);
+  backdrop-filter: blur(14px) saturate(120%);
+  transition:
+    border-color 0.5s,
+    box-shadow 0.5s;
+}
+
+.panel::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  border-radius: inherit;
+  padding: 1px;
+  pointer-events: none;
+  opacity: 0;
+  background: conic-gradient(
+    from var(--rgb-angle),
+    hsl(352 100% 60%),
+    hsl(40 100% 58%),
+    hsl(146 90% 50%),
+    hsl(195 100% 58%),
+    hsl(270 100% 68%),
+    hsl(330 100% 62%),
+    hsl(352 100% 60%)
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  transition: opacity 0.6s ease;
+}
+
+.panel:hover::before,
+.panel:focus-within::before {
+  opacity: 0.85;
+  animation: rgb-spin 6s linear infinite;
+}
+
+.panel:hover {
+  box-shadow:
+    inset 0 1px 0 hsl(0 0% 100% / 0.06),
+    0 0 42px -12px hsl(var(--primary) / 0.22),
+    var(--shadow-card);
+}
+
+/* Spectrum title. Each letter-run is painted with the RGB scale and flows across it. */
+.rgb-text {
+  background: linear-gradient(
+    90deg,
+    hsl(352 100% 64%),
+    hsl(38 100% 62%),
+    hsl(146 90% 56%),
+    hsl(195 100% 62%),
+    hsl(270 100% 72%),
+    hsl(330 100% 66%),
+    hsl(352 100% 64%)
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: rgb-flow 9s linear infinite;
+  transition: filter 0.5s;
+}
+
+.rgb-text:hover {
+  filter: drop-shadow(2px 0 0 hsl(0 100% 55% / 0.55)) drop-shadow(-2px 0 0 hsl(195 100% 55% / 0.55));
+}
+
+/* Ambient light. The --ch-* variables (0 to 1) are written every frame from the spectrum. */
+.ambient {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(60vmax 45vmax at 10% -5%, hsl(352 100% 52% / calc(var(--ch-r, 0) * 0.32)), transparent 70%),
+    radial-gradient(55vmax 42vmax at 92% 6%, hsl(146 100% 46% / calc(var(--ch-g, 0) * 0.24)), transparent 70%),
+    radial-gradient(70vmax 50vmax at 50% 110%, hsl(214 100% 55% / calc(var(--ch-b, 0) * 0.34)), transparent 70%);
+}
+
+/* Film grain over the whole page. Pointer events pass through. */
+.grain::before {
+  content: '';
+  position: fixed;
+  inset: -50%;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.045;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  animation: grain-shift 1.4s steps(6) infinite;
+}
+
+/* Each tab panel fades up from a slight blur when it is opened. */
+.tab-enter {
+  animation: tab-in 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 
 /* Respect the user's motion preference. */
 @media (prefers-reduced-motion: reduce) {
-  .rainbow-border,
+  .panel::before,
+  .panel:hover::before,
+  .panel:focus-within::before,
+  .rgb-text,
+  .grain::before,
+  .tab-enter,
   .animate-pulse-glow,
   .animate-spin-slow,
   .animate-equalizer {

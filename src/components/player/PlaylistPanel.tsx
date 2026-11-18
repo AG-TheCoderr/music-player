@@ -139,7 +139,7 @@ export const PlaylistPanel = () => {
   };
 
   return (
-    <Card className="p-4 bg-gradient-surface border-audio-control h-full flex flex-col">
+    <Card className="p-4 panel h-full flex flex-col">
       <div className="flex items-center justify-between mb-4 gap-2">
         <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
           <ListMusic className="h-4 w-4" />

@@ -42,7 +42,7 @@ export const ModeSelector: React.FC = () => {
   const mode = usePlayerSelector((state) => state.mode);
 
   return (
-    <Card className="p-6 bg-gradient-surface border-audio-control">
+    <Card className="p-6 panel">
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold text-foreground">Audio Mode</h3>

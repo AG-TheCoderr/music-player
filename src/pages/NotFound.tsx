@@ -13,7 +13,7 @@ const NotFound = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-6 bg-background">
-      <Card className="w-full max-w-md p-8 bg-gradient-surface border-audio-control text-center space-y-4">
+      <Card className="w-full max-w-md p-8 panel text-center space-y-4">
         <div className="flex items-center justify-center w-16 h-16 mx-auto rounded-full bg-primary/15">
           <Disc3 className="w-8 h-8 text-primary" />
         </div>

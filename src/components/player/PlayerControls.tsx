@@ -62,7 +62,7 @@ export const PlayerControls: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col space-y-4 p-6 bg-gradient-surface rounded-lg border border-audio-control shadow-card">
+    <div className="flex flex-col space-y-4 p-6 panel">
       {/* Track Info */}
       {currentTrack && (
         <div className="flex items-center space-x-4">

@@ -23,7 +23,7 @@ export const Equalizer: React.FC = () => {
   const width = usePlayerSelector((state) => state.equalizerWidth);
 
   return (
-    <Card className="p-6 bg-gradient-surface border-audio-control">
+    <Card className="p-6 panel">
       <div className="space-y-6">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <h3 className="text-lg font-semibold text-foreground">Equalizer</h3>

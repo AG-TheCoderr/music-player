@@ -48,7 +48,7 @@ export const EffectsPanel: React.FC = () => {
   };
 
   return (
-    <Card className="p-6 bg-gradient-surface border-audio-control">
+    <Card className="p-6 panel">
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold text-foreground">Audio Effects</h3>
