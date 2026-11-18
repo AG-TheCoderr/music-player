@@ -129,8 +129,14 @@ export class AudioProxyService {
     return merged;
   }
 
-  /** Extract a playable audio stream URL from a direct audio URL. */
-  static async extractAudioUrl(url: string): Promise<ExtractResult | null> {
+  /**
+   * Extracts a playable audio stream URL from a page URL.
+   *
+   * Throws with the backend's reason when extraction is refused (for example SoundCloud, which
+   * the backend cannot extract). Returning null here used to hide that reason behind a generic
+   * "extraction failed" message.
+   */
+  static async extractAudioUrl(url: string): Promise<ExtractResult> {
     if (!url || !/^https?:\/\//i.test(url)) {
       throw new Error('Only http(s) URLs can be extracted.');
     }
@@ -139,17 +145,18 @@ export class AudioProxyService {
       action: 'extract',
       url,
     });
+    assertFunctionSucceeded(data);
 
-    if (data?.success && data.streamUrl) {
-      return {
-        streamUrl: data.streamUrl,
-        title: data.title ?? 'Unknown Track',
-        artist: data.artist ?? 'Unknown Artist',
-        thumbnail: data.thumbnail,
-      };
+    if (!data?.streamUrl) {
+      throw new Error('The backend returned no playable stream for this URL.');
     }
 
-    return null;
+    return {
+      streamUrl: data.streamUrl,
+      title: data.title ?? 'Unknown Track',
+      artist: data.artist ?? 'Unknown Artist',
+      thumbnail: data.thumbnail,
+    };
   }
 
   /** Check if a URL points at a platform that needs proxy extraction. */
