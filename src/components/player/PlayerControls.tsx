@@ -19,6 +19,7 @@ export const PlayerControls: React.FC = () => {
   const {
     play,
     pause,
+    playTrackAtIndex,
     nextTrack,
     previousTrack,
     setVolume,
@@ -32,6 +33,7 @@ export const PlayerControls: React.FC = () => {
   const isPlaying = usePlayerSelector((state) => state.isPlaying);
   const isLoading = usePlayerSelector((state) => state.isLoading);
   const currentTrack = usePlayerSelector((state) => state.currentTrack);
+  const playlist = usePlayerSelector((state) => state.playlist);
   const volume = usePlayerSelector((state) => state.volume);
   const currentTime = usePlayerSelector((state) => state.currentTime);
   const duration = usePlayerSelector((state) => state.duration);
@@ -56,6 +58,9 @@ export const PlayerControls: React.FC = () => {
   const togglePlayPause = () => {
     if (isPlaying) {
       pause();
+    } else if (!currentTrack && playlist.length > 0) {
+      // Nothing loaded yet: start the first track in the playlist.
+      playTrackAtIndex(0);
     } else {
       play();
     }

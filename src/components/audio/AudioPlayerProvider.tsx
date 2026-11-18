@@ -208,6 +208,9 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, [store]);
 
   const play = useCallback(() => {
+    // Without a loaded track there is nothing to play, so the playing state must not change.
+    if (!store.getState().currentTrack) return;
+
     if (audioEngineRef.current) {
       audioEngineRef.current.play();
       store.setState((prev) => ({ ...prev, isPlaying: true, error: null }));
