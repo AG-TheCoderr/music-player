@@ -1,0 +1,173 @@
+/**
+ * Headless smoke test: boots the real app inside jsdom and asserts that the
+ * player shell renders, the tabs work and no errors are thrown.
+ *
+ *   node scripts/smoke-test.mjs
+ */
+import { build } from 'esbuild';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import fs from 'node:fs';
+import { setupJsdom, captureErrors } from './jsdom-env.mjs';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const outfile = path.join(root, 'node_modules', '.smoke', 'app.js');
+
+fs.mkdirSync(path.dirname(outfile), { recursive: true });
+
+await build({
+  entryPoints: [path.join(root, 'src', 'main.tsx')],
+  bundle: true,
+  format: 'iife',
+  platform: 'browser',
+  target: 'es2020',
+  outfile,
+  jsx: 'automatic',
+  loader: { '.css': 'empty', '.svg': 'text' },
+  define: {
+    'process.env.NODE_ENV': '"production"',
+    'import.meta.env.VITE_SUPABASE_URL': JSON.stringify('https://example.supabase.co'),
+    'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify('anon-test-key'),
+  },
+  logLevel: 'error',
+});
+
+const { window } = setupJsdom();
+const errors = captureErrors();
+
+window.addEventListener('error', (e) => errors.push(`window error: ${e.message}`));
+
+await import(pathToFileURL(outfile).href);
+
+await new Promise((resolve) => setTimeout(resolve, 400));
+
+const doc = window.document;
+
+const findByText = (selector, text) =>
+  Array.from(doc.querySelectorAll(selector)).find((el) => (el.textContent || '').trim().includes(text));
+
+const clickText = async (selector, text) => {
+  const el = findByText(selector, text);
+  if (!el) throw new Error(`Could not find ${selector} containing "${text}"`);
+  el.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+  await new Promise((resolve) => setTimeout(resolve, 120));
+};
+
+// Radix tabs activate on mousedown, not on click.
+const pressTab = async (text) => {
+  const el = findByText('button[role="tab"]', text);
+  if (!el) throw new Error(`Could not find tab "${text}"`);
+  el.dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+  await new Promise((resolve) => setTimeout(resolve, 120));
+};
+
+// Snapshot the initial state before any interaction mutates it.
+const initialBody = doc.body.textContent || '';
+
+// --- interactions -------------------------------------------------------
+// 1. switch to the YouTube tab
+await pressTab('YouTube');
+const youtubeTab = findByText('button[role="tab"]', 'YouTube');
+const youtubeTabSelected = youtubeTab?.getAttribute('data-state') === 'active';
+const youtubeContainer = doc.getElementById('yt-player-root') !== null;
+
+// 2. switch back to the player tab
+await pressTab('Player');
+
+// 3. pick a listening mode -> the badge has to follow
+await clickText('button', 'Bass Boost');
+const modeBadge = Array.from(doc.querySelectorAll('div')).find(
+  (el) => el.textContent?.trim() === 'Bass Boost' && el.children.length === 0
+);
+
+// 4. add the demo track to the playlist
+await clickText('button', 'Demo Track');
+const playlistHasTrack = (doc.body.textContent || '').includes('Demo Track - Ambient Soundscape');
+const playlistCount = (doc.body.textContent || '').match(/Up Next\s*\((\d+)\)/)?.[1];
+
+// 5. transport controls exist and are labelled
+const labelled = ['Toggle shuffle', 'Previous track', 'Next track', 'Repeat: none'];
+const hasLabelledControls = labelled.every((label) => doc.querySelector(`[aria-label="${label}"]`) !== null);
+
+// 6. keyboard shortcuts
+const pressKey = async (key, target) => {
+  const node = target ?? doc.body;
+  node.dispatchEvent(new window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+  await new Promise((resolve) => setTimeout(resolve, 120));
+};
+
+const activeTab = () => doc.querySelector('button[role="tab"][data-state="active"]')?.textContent?.trim();
+
+await pressKey('2');
+const numberKeySwitchedTab = activeTab() === 'Equalizer';
+
+// Back to the player - the volume slider only exists while that tab is mounted.
+await pressKey('1');
+const numberKeySwitchedBack = activeTab() === 'Player';
+
+await pressKey('?');
+const helpOpened = doc.querySelector('[role="dialog"][aria-label="Keyboard shortcuts"]') !== null;
+await pressKey('Escape');
+const helpClosed = doc.querySelector('[role="dialog"][aria-label="Keyboard shortcuts"]') === null;
+
+const volumeThumb = () => doc.querySelector('[role="slider"][aria-label="Volume"]');
+const volumeBefore = volumeThumb()?.getAttribute('aria-valuenow');
+await pressKey('m');
+const volumeMuted = volumeThumb()?.getAttribute('aria-valuenow');
+await pressKey('m');
+const volumeRestored = volumeThumb()?.getAttribute('aria-valuenow');
+
+// Shortcuts must not fire while the user is typing.
+const searchInput = doc.querySelector('input[placeholder*="Search for songs"]');
+await pressKey('2', searchInput);
+const typingDidNotSwitchTab = activeTab() === 'Player';
+
+const body = doc.body.textContent || '';
+const html = doc.body.innerHTML;
+
+const checks = [
+  ['app mounted', html.includes('Sonic Studio Pro')],
+  ['player tab', body.includes('Player')],
+  ['equalizer tab', body.includes('Equalizer')],
+  ['effects tab', body.includes('Effects')],
+  ['youtube tab', body.includes('YouTube')],
+  ['settings tab', body.includes('Settings')],
+  ['search panel', body.includes('Music Search')],
+  ['load panel', body.includes('Load Music')],
+  ['mode panel', body.includes('Audio Mode')],
+  ['playlist panel', body.includes('Up Next')],
+  ['empty playlist hint (initially)', initialBody.includes('Playlist is empty')],
+  ['visualiser present', body.includes('Audio Visualizer')],
+  ['track info present', body.includes('Track Info')],
+  ['no hardcoded fake format', !body.includes('MP3 320kbps')],
+  ['no hardcoded fake latency', !body.includes('46ms')],
+  ['youtube tab switches', youtubeTabSelected],
+  ['youtube player container exists', youtubeContainer],
+  ['mode selection updates the badge', modeBadge !== undefined],
+  ['demo track added to playlist', playlistHasTrack],
+  ['playlist counter updated', playlistCount === '1'],
+  ['transport controls are labelled', hasLabelledControls],
+  ['a number key switches tab', numberKeySwitchedTab],
+  ['a number key switches back', numberKeySwitchedBack],
+  ['the help overlay opens', helpOpened],
+  ['escape closes the help overlay', helpClosed],
+  ['m mutes', volumeBefore !== '0' && volumeMuted === '0'],
+  ['m unmutes back to the previous level', volumeRestored === volumeBefore],
+  ['shortcuts are ignored while typing', typingDidNotSwitchTab],
+  ['the volume slider is labelled', volumeThumb() !== null],
+  ['no runtime errors', errors.length === 0],
+];
+
+let failed = 0;
+for (const [name, ok] of checks) {
+  console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}`);
+  if (!ok) failed++;
+}
+
+if (errors.length) {
+  console.log('\n--- captured errors ---');
+  errors.forEach((e) => console.log(e));
+}
+
+console.log(`\n${checks.length - failed}/${checks.length} checks passed`);
+process.exit(failed === 0 ? 0 : 1);

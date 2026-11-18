@@ -1,6 +1,7 @@
-import { supabase } from '@/integrations/supabase/client';
+import { SUPABASE_URL } from '@/integrations/supabase/config';
+import { invokeEdgeFunction, assertFunctionSucceeded } from '@/services/edgeFunctions';
 
-interface SearchResult {
+export interface SearchResult {
   id: string;
   title: string;
   artist: string;
@@ -10,27 +11,49 @@ interface SearchResult {
   platform: string;
 }
 
-interface ExtractResult {
+export interface ExtractResult {
   streamUrl: string;
   title: string;
   artist: string;
   thumbnail?: string;
 }
 
-export class AudioProxyService {
-  private static SUPABASE_URL = 'https://oqadksqsoddegadylwtr.supabase.co';
+export type SearchPlatform = 'youtube' | 'soundcloud' | 'spotify' | 'all';
 
-  // Build a proxied URL for cross-origin audio to bypass CORS and support Range
+/** Platforms the backend can actually query. */
+const SUPPORTED_PLATFORMS: SearchPlatform[] = ['all', 'youtube'];
+
+interface YoutubeSearchResponse {
+  success: boolean;
+  error?: string;
+  results?: SearchResult[];
+}
+
+interface AudioProxyResponse {
+  success: boolean;
+  error?: string;
+  results?: SearchResult[];
+  streamUrl?: string;
+  title?: string;
+  artist?: string;
+  thumbnail?: string;
+}
+
+export class AudioProxyService {
+  /** Builds a proxied URL for cross-origin audio to bypass CORS and support Range requests. */
   static buildProxiedUrl(url: string): string {
     try {
+      if (!url) return url;
+      // Never proxy an already proxied URL.
+      if (url.startsWith(`${SUPABASE_URL}/functions/v1/`)) return url;
       if (!this.shouldProxyUrl(url)) return url;
-      return `${this.SUPABASE_URL}/functions/v1/audio-stream-proxy?url=${encodeURIComponent(url)}`;
+      return `${SUPABASE_URL}/functions/v1/audio-stream-proxy?url=${encodeURIComponent(url)}`;
     } catch {
       return url;
     }
   }
 
-  // Determine if a URL is cross-origin and should be proxied
+  /** Determines if a URL is cross-origin and should be proxied. */
   static shouldProxyUrl(url: string): boolean {
     try {
       if (!url) return false;
@@ -42,98 +65,94 @@ export class AudioProxyService {
     }
   }
 
-  // Search for music across platforms
-  static async searchMusic(query: string, platform: 'youtube' | 'soundcloud' | 'spotify' | 'all' = 'all'): Promise<SearchResult[]> {
-    try {
-      // Use dedicated YouTube function when explicitly searching YouTube
-      if (platform === 'youtube') {
-        const { data, error } = await supabase.functions.invoke('youtube-search', {
-          body: { query, maxResults: 20 }
-        });
-        if (error) {
-          console.error('YouTube search error:', error);
-          return [];
-        }
-        return (data?.results as SearchResult[]) || [];
-      }
-
-      // For 'all', merge audio-proxy results with YouTube to integrate into the original search bar
-      if (platform === 'all') {
-        const [baseRes, ytRes] = await Promise.all([
-          supabase.functions.invoke('audio-proxy', { body: { action: 'search', query, platform: 'all' } }),
-          supabase.functions.invoke('youtube-search', { body: { query, maxResults: 15 } })
-        ]);
-
-        const baseResults = (baseRes.data?.results as SearchResult[]) || [];
-        const ytResults = (ytRes.data?.results as SearchResult[]) || [];
-
-        // De-duplicate by id+platform
-        const seen = new Set<string>();
-        const merged: SearchResult[] = [];
-        for (const arr of [baseResults, ytResults]) {
-          for (const r of arr) {
-            const key = `${r.platform}:${r.id}`;
-            if (!seen.has(key)) {
-              seen.add(key);
-              merged.push(r);
-            }
-          }
-        }
-        return merged;
-      }
-
-      const { data, error } = await supabase.functions.invoke('audio-proxy', {
-        body: {
-          action: 'search',
-          query,
-          platform
-        }
-      });
-
-      if (error) {
-        console.error('Search error:', error);
-        return [];
-      }
-
-      return data.results || [];
-    } catch (error) {
-      console.error('Search failed:', error);
-      return [];
+  /** Search for music across platforms. */
+  static async searchMusic(query: string, platform: SearchPlatform = 'all'): Promise<SearchResult[]> {
+    if (!SUPPORTED_PLATFORMS.includes(platform)) {
+      throw new Error(
+        `Searching ${platform} is not available - no ${platform} API credentials are configured. Use "all" or "youtube".`
+      );
     }
+
+    if (!query || !query.trim()) {
+      throw new Error('Enter something to search for.');
+    }
+
+    // YouTube search uses the dedicated function.
+    if (platform === 'youtube') {
+      const data = await invokeEdgeFunction<YoutubeSearchResponse>('youtube-search', {
+        query,
+        maxResults: 20,
+      });
+      assertFunctionSucceeded(data);
+      return data?.results ?? [];
+    }
+
+    // For 'all', merge the preview results with the YouTube results.
+    const [baseResult, ytResult] = await Promise.allSettled([
+      invokeEdgeFunction<AudioProxyResponse>('audio-proxy', { action: 'search', query, platform: 'all' }).then(
+        (data) => {
+          assertFunctionSucceeded(data);
+          return data;
+        }
+      ),
+      invokeEdgeFunction<YoutubeSearchResponse>('youtube-search', { query, maxResults: 15 }).then((data) => {
+        assertFunctionSucceeded(data);
+        return data;
+      }),
+    ]);
+
+    const baseResults = baseResult.status === 'fulfilled' ? baseResult.value?.results ?? [] : [];
+    // A missing YT_API_KEY should not break the whole search.
+    const ytResults = ytResult.status === 'fulfilled' ? ytResult.value?.results ?? [] : [];
+
+    // De-duplicate by id + platform
+    const seen = new Set<string>();
+    const merged: SearchResult[] = [];
+    for (const arr of [baseResults, ytResults]) {
+      for (const r of arr) {
+        const key = `${r.platform}:${r.id}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          merged.push(r);
+        }
+      }
+    }
+
+    // An empty result set plus a failure must not look like "nothing matched".
+    if (!merged.length) {
+      const failure = baseResult.status === 'rejected' ? baseResult.reason : ytResult.status === 'rejected' ? ytResult.reason : null;
+      if (failure) {
+        throw failure instanceof Error ? failure : new Error('The search backend is unavailable. Please try again later.');
+      }
+    }
+
+    return merged;
   }
 
-  // Extract audio stream URL from various platforms
+  /** Extract a playable audio stream URL from a direct audio URL. */
   static async extractAudioUrl(url: string): Promise<ExtractResult | null> {
-    try {
-      const { data, error } = await supabase.functions.invoke('audio-proxy', {
-        body: {
-          action: 'extract',
-          url
-        }
-      });
-
-      if (error) {
-        console.error('Extract error:', error);
-        return null;
-      }
-
-      if (data.success) {
-        return {
-          streamUrl: data.streamUrl,
-          title: data.title,
-          artist: data.artist,
-          thumbnail: data.thumbnail
-        };
-      }
-
-      return null;
-    } catch (error) {
-      console.error('Extract failed:', error);
-      return null;
+    if (!url || !/^https?:\/\//i.test(url)) {
+      throw new Error('Only http(s) URLs can be extracted.');
     }
+
+    const data = await invokeEdgeFunction<AudioProxyResponse>('audio-proxy', {
+      action: 'extract',
+      url,
+    });
+
+    if (data?.success && data.streamUrl) {
+      return {
+        streamUrl: data.streamUrl,
+        title: data.title ?? 'Unknown Track',
+        artist: data.artist ?? 'Unknown Artist',
+        thumbnail: data.thumbnail,
+      };
+    }
+
+    return null;
   }
 
-  // Check if URL needs proxy extraction
+  /** Check if a URL points at a platform that needs proxy extraction. */
   static needsProxy(url: string): boolean {
     return /(?:youtube\.com|youtu\.be|music\.youtube\.com|soundcloud\.com|spotify\.com)/.test(url);
   }
