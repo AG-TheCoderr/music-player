@@ -44,7 +44,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
 
           <h1 className="text-xl font-semibold text-foreground">Something went wrong</h1>
           <p className="text-sm text-muted-foreground">
-            The player hit an unexpected error. You can retry without reloading the page.
+            An unexpected error occurred. You can retry without reloading.
           </p>
 
           <pre className="text-left text-xs text-muted-foreground bg-muted/40 border border-border rounded-md p-3 overflow-auto max-h-40">

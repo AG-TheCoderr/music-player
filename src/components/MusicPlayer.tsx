@@ -7,12 +7,12 @@ import { FileLoader } from './player/FileLoader';
 import { ModeSelector } from './player/ModeSelector';
 import { Visualizer } from './audio/Visualizer';
 import { MusicSearch } from './search/MusicSearch';
-import { YouTubePane } from './player/YouTubePane';
 import { KeyboardShortcuts } from './player/KeyboardShortcuts';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Headphones, Settings, Upload, BarChart3, AlertTriangle, X } from 'lucide-react';
+import { EQ_BAND_FREQUENCIES } from './audio/equalizer';
 
 // Heavy panels are split out of the initial bundle.
 const Equalizer = lazy(() => import('./player/Equalizer').then((m) => ({ default: m.Equalizer })));
@@ -46,7 +46,7 @@ const detectFormat = (src: string | File | undefined): string => {
   if (!src) return 'Unknown';
   if (src instanceof File) {
     const extension = src.name.split('.').pop()?.toLowerCase() ?? '';
-    return AUDIO_EXTENSIONS[extension] ?? extension.toUpperCase() ?? 'Unknown';
+    return AUDIO_EXTENSIONS[extension] ?? (extension.toUpperCase() || 'Unknown');
   }
 
   try {
@@ -56,7 +56,21 @@ const detectFormat = (src: string | File | undefined): string => {
   } catch {
     /* fall through */
   }
-  return 'Stream / Unknown';
+  return 'Stream';
+};
+
+/** Bands shown in the Quick EQ strip, by centre frequency. */
+const QUICK_EQ_BANDS: { frequency: number; label: string }[] = [
+  { frequency: 63, label: 'Bass' },
+  { frequency: 250, label: 'Low' },
+  { frequency: 1000, label: 'Mid' },
+  { frequency: 4000, label: 'High' },
+  { frequency: 12500, label: 'Treble' },
+];
+
+const quickEqIndex = (frequency: number): number => {
+  const index = EQ_BAND_FREQUENCIES.indexOf(frequency);
+  return index >= 0 ? index : 0;
 };
 
 const formatDuration = (seconds: number): string => {
@@ -73,7 +87,7 @@ const MusicPlayerContent: React.FC = () => {
   const currentTrack = usePlayerSelector((state) => state.currentTrack);
   const duration = usePlayerSelector((state) => state.duration);
   const audioInfo = usePlayerSelector((state) => state.audioInfo);
-  const externalSource = usePlayerSelector((state) => state.externalSource);
+  const equalizerRange = usePlayerSelector((state) => state.equalizerRange);
   const error = usePlayerSelector((state) => state.error);
   const isLoading = usePlayerSelector((state) => state.isLoading);
 
@@ -90,7 +104,7 @@ const MusicPlayerContent: React.FC = () => {
           </h1>
         </div>
         <div className="flex items-center justify-center gap-3">
-          <p className="text-muted-foreground">Music player with equalizer and effects</p>
+          <p className="text-muted-foreground">Player, equalizer and effects</p>
           <KeyboardShortcuts tab={tab} onTabChange={setTab} />
         </div>
         <div className="flex items-center justify-center space-x-2 flex-wrap">
@@ -104,7 +118,7 @@ const MusicPlayerContent: React.FC = () => {
           </Badge>
           <Badge variant="outline" className="bg-primary-glow/10 border-primary-glow/20">
             <Upload className="w-3 h-3 mr-1" />
-            Any Source
+            Files and streams
           </Badge>
         </div>
       </div>
@@ -125,7 +139,7 @@ const MusicPlayerContent: React.FC = () => {
       {/* Main Content */}
       <div className="max-w-7xl mx-auto">
         <Tabs value={tab} onValueChange={setTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 mb-6 bg-audio-surface border border-audio-control">
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 mb-6 bg-audio-surface border border-audio-control">
             <TabsTrigger value="player" className="data-[state=active]:bg-gradient-primary">
               Player
             </TabsTrigger>
@@ -134,9 +148,6 @@ const MusicPlayerContent: React.FC = () => {
             </TabsTrigger>
             <TabsTrigger value="effects" className="data-[state=active]:bg-gradient-primary">
               Effects
-            </TabsTrigger>
-            <TabsTrigger value="youtube" className="data-[state=active]:bg-gradient-primary">
-              YouTube
             </TabsTrigger>
             <TabsTrigger value="settings" className="data-[state=active]:bg-gradient-primary">
               Settings
@@ -160,27 +171,17 @@ const MusicPlayerContent: React.FC = () => {
                 <Card className="p-6 bg-gradient-surface border-audio-control rainbow-border">
                   <div className="space-y-4">
                     <h3 className="text-lg font-semibold text-foreground">Audio Visualizer</h3>
-                    {externalSource === 'youtube' ? (
-                      <div className="h-32 bg-audio-track rounded-lg overflow-hidden flex items-center justify-center">
-                        <p className="text-sm text-muted-foreground px-4 text-center">
-                          Not available for YouTube playback.
-                        </p>
+                    <div className="h-32 bg-audio-track rounded-lg overflow-hidden">
+                      <Visualizer type="bars" responsive className="w-full h-full" barCount={32} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 h-20">
+                      <div className="bg-audio-track rounded-lg overflow-hidden">
+                        <Visualizer type="wave" responsive className="w-full h-full" />
                       </div>
-                    ) : (
-                      <>
-                        <div className="h-32 bg-audio-track rounded-lg overflow-hidden">
-                          <Visualizer type="bars" responsive className="w-full h-full" barCount={32} />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4 h-20">
-                          <div className="bg-audio-track rounded-lg overflow-hidden">
-                            <Visualizer type="wave" responsive className="w-full h-full" />
-                          </div>
-                          <div className="bg-audio-track rounded-lg overflow-hidden">
-                            <Visualizer type="circular" responsive className="w-full h-full" />
-                          </div>
-                        </div>
-                      </>
-                    )}
+                      <div className="bg-audio-track rounded-lg overflow-hidden">
+                        <Visualizer type="circular" responsive className="w-full h-full" />
+                      </div>
+                    </div>
                   </div>
                 </Card>
               </div>
@@ -191,20 +192,18 @@ const MusicPlayerContent: React.FC = () => {
                 <Card className="p-4 bg-gradient-surface border-audio-control rainbow-border">
                   <h4 className="text-sm font-semibold text-foreground mb-3">Quick EQ</h4>
                   <div className="flex justify-between items-end h-16">
-                    {[0, 2, 4, 6, 8].map((eqIndex, i) => {
-                      const gain = equalizerBands[eqIndex] || 0;
-                      const height = Math.max(5, ((gain + 12) / 24) * 100);
+                    {QUICK_EQ_BANDS.map(({ frequency, label }) => {
+                      const gain = equalizerBands[quickEqIndex(frequency)] ?? 0;
+                      const height = Math.max(5, ((gain + equalizerRange) / (2 * equalizerRange)) * 100);
                       return (
-                        <div key={i} className="flex-1 mx-1">
+                        <div key={frequency} className="flex-1 mx-1">
                           <div className="bg-audio-track rounded h-full relative overflow-hidden">
                             <div
                               className="bg-gradient-primary w-full absolute bottom-0 transition-all duration-300"
                               style={{ height: `${height}%` }}
                             />
                           </div>
-                          <div className="text-xs text-center text-muted-foreground mt-1">
-                            {['Bass', 'Low', 'Mid', 'High', 'Tre'][i]}
-                          </div>
+                          <div className="text-xs text-center text-muted-foreground mt-1">{label}</div>
                         </div>
                       );
                     })}
@@ -242,7 +241,7 @@ const MusicPlayerContent: React.FC = () => {
                     <div className="flex justify-between gap-4">
                       <span className="text-muted-foreground">Source:</span>
                       <span className="text-foreground">
-                        {isLoading ? 'Loading...' : externalSource === 'youtube' ? 'YouTube' : 'Direct audio'}
+                        {isLoading ? 'Loading' : currentTrack ? (typeof currentTrack.src === 'string' ? 'Stream' : 'Local file') : '--'}
                       </span>
                     </div>
                   </div>
@@ -271,21 +270,14 @@ const MusicPlayerContent: React.FC = () => {
             </div>
           </TabsContent>
 
-          {/* forceMount keeps the YouTube iframe alive while switching tabs */}
-          <TabsContent value="youtube" forceMount className="mt-2 data-[state=inactive]:hidden">
-            <div className="max-w-4xl mx-auto">
-              <YouTubePane />
-            </div>
-          </TabsContent>
-
           <TabsContent value="settings" className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <ModeSelector />
               <Card className="p-6 bg-gradient-surface border-audio-control rainbow-border">
-                <h3 className="text-lg font-semibold text-foreground mb-4">Advanced Settings</h3>
+                <h3 className="text-lg font-semibold text-foreground mb-4">Output</h3>
                 <div className="space-y-4 text-sm">
                   <div className="flex justify-between items-center">
-                    <span className="text-muted-foreground">Buffer Size:</span>
+                    <span className="text-muted-foreground">Buffer size:</span>
                     <span className="text-foreground">{audioInfo ? `${audioInfo.bufferSize} samples` : '--'}</span>
                   </div>
                   <div className="flex justify-between items-center">
@@ -303,7 +295,7 @@ const MusicPlayerContent: React.FC = () => {
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-muted-foreground">Context State:</span>
+                    <span className="text-muted-foreground">Audio context:</span>
                     <span className="text-foreground">{audioInfo?.state ?? 'initialising'}</span>
                   </div>
                 </div>

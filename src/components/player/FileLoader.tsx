@@ -8,10 +8,9 @@ import { Upload, Link, Music, FileAudio } from 'lucide-react';
 import { usePlayerActions, usePlayerSelector } from '../audio/playerContext';
 import { useToast } from '@/hooks/use-toast';
 import { AudioProxyService } from '@/services/audioProxyService';
-import { YouTubeController } from '@/services/youtubeController';
 
 export const FileLoader: React.FC = () => {
-  const { loadTrack, addToPlaylist, loadYouTube } = usePlayerActions();
+  const { loadTrack, addToPlaylist } = usePlayerActions();
   const currentTrack = usePlayerSelector((state) => state.currentTrack);
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -26,7 +25,6 @@ export const FileLoader: React.FC = () => {
     duration: 0,
     src: file,
     artwork: undefined,
-    source: 'audio' as const,
   });
 
   const createTrackFromUrl = (url: string) => {
@@ -46,7 +44,6 @@ export const FileLoader: React.FC = () => {
       duration: 0,
       src,
       artwork: undefined,
-      source: 'audio' as const,
     };
   };
 
@@ -95,57 +92,14 @@ export const FileLoader: React.FC = () => {
         throw new Error('Enter a full http(s) URL.');
       }
 
-      // Guard against pasted image CDN links (not playable audio).
-      if (/^https?:\/\/(?:[^/]*\.)?img\.youtube\.com\//i.test(url)) {
-        throw new Error('That looks like an image link. Paste a direct audio URL or a YouTube video URL.');
-      }
-
-      // YouTube links are played through the YouTube player, not the audio engine.
-      if (YouTubeController.isYouTubeUrl(url)) {
-        await loadYouTube(url);
-        toast({ title: 'YouTube video loaded', description: 'Open the YouTube tab to play it.' });
-        setUrlInput('');
-        return;
-      }
-
-      let track;
-
-      if (AudioProxyService.needsProxy(url)) {
-        // Direct audio hosted on a streaming platform - ask the backend for a playable URL.
-        const extracted = await AudioProxyService.extractAudioUrl(url);
-        if (!extracted) {
-          throw new Error('The backend could not extract a playable stream from that URL.');
-        }
-
-        const proxied = AudioProxyService.shouldProxyUrl(extracted.streamUrl)
-          ? AudioProxyService.buildProxiedUrl(extracted.streamUrl)
-          : extracted.streamUrl;
-
-        track = {
-          id: `extracted-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
-          title: extracted.title,
-          artist: extracted.artist,
-          duration: 0,
-          src: proxied,
-          artwork: extracted.thumbnail,
-          source: 'audio' as const,
-        };
-
-        toast({ title: 'Audio extracted', description: `Successfully extracted audio from ${new URL(url).hostname}` });
-      } else {
-        track = createTrackFromUrl(url);
-        toast({ title: 'URL loaded', description: 'Added to the playlist.' });
-      }
-
+      const track = createTrackFromUrl(url);
       addToPlaylist(track);
+      toast({ title: 'Added to playlist', description: track.title });
       setUrlInput('');
     } catch (error) {
       toast({
-        title: 'Error loading URL',
-        description:
-          error instanceof Error
-            ? error.message
-            : 'Failed to load audio from the provided URL. Try using the music search feature instead.',
+        title: 'Could not load URL',
+        description: error instanceof Error ? error.message : 'The URL could not be loaded.',
         variant: 'destructive',
       });
     } finally {
@@ -202,7 +156,7 @@ export const FileLoader: React.FC = () => {
               <p className="text-foreground font-medium">
                 {isDragging ? 'Drop your music files here' : 'Drag & drop music files'}
               </p>
-              <p className="text-sm text-muted-foreground">or click to browse • MP3, WAV, OGG, FLAC, M4A</p>
+              <p className="text-sm text-muted-foreground">or click to browse: MP3, WAV, OGG, FLAC, M4A</p>
             </div>
           </div>
         </button>
@@ -226,12 +180,12 @@ export const FileLoader: React.FC = () => {
             <Input
               value={urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
-              placeholder="Direct audio URL (MP3, WAV, etc.) or a YouTube link"
+              placeholder="Direct audio URL (MP3, WAV, OGG, FLAC)"
               className="flex-1 bg-audio-control border-border focus:border-primary"
               onKeyDown={(e) => e.key === 'Enter' && handleUrlLoad()}
             />
             <Button onClick={handleUrlLoad} disabled={isLoading || !urlInput.trim()} className="bg-primary hover:bg-primary/90">
-              {isLoading ? 'Loading...' : 'Load'}
+              {isLoading ? 'Loading' : 'Load'}
             </Button>
           </div>
         </div>
@@ -258,7 +212,6 @@ export const FileLoader: React.FC = () => {
                 duration: 0,
                 src: publicUrl('audio/demo.mp3'),
                 artwork: publicUrl('placeholder.svg'),
-                source: 'audio',
               });
               toast({ title: 'Demo track added', description: 'Added to the playlist.' });
             }}

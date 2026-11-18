@@ -1,12 +1,19 @@
 import React, { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { AudioEngine, AudioEffects } from './AudioEngine';
 import { MediaSessionService } from '@/services/mediaSession';
-import { YouTubeController, YT_PLAYER_CONTAINER_ID } from '@/services/youtubeController';
 import { loadPreferences, savePreferences } from '@/services/preferences';
+import {
+  EQ_BAND_COUNT,
+  EQ_DEFAULT_Q,
+  EQ_DEFAULT_RANGE,
+  EQ_PRESETS,
+  MODE_PRESET,
+  clampBandGain,
+  clampQ,
+} from './equalizer';
 import {
   AudioPlayerActions,
   AudioPlayerState,
-  ExternalSource,
   PlayMode,
   PlayerStore,
   RepeatMode,
@@ -40,25 +47,6 @@ const initialEffects: AudioEffects = {
   },
 };
 
-const equalizerPresets: Record<string, number[]> = {
-  flat: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  rock: [3, 2, -1, -2, -1, 1, 3, 4, 4, 3],
-  pop: [1, 2, 3, 2, 0, -1, -1, 1, 2, 3],
-  jazz: [2, 1, 0, 1, 2, 2, 1, 0, 1, 2],
-  classical: [3, 2, 0, 0, 0, 0, -1, -1, -1, -2],
-  electronic: [4, 3, 1, 0, -1, 1, 2, 3, 4, 4],
-  'bass-boost': [6, 4, 2, 1, 0, 0, 0, 0, 0, 0],
-  'vocal-enhance': [0, 0, 0, 2, 4, 4, 2, 1, 0, 0],
-  'instrument-focus': [0, 0, -2, -1, 0, 1, 2, 3, 2, 1],
-};
-
-const MODE_PRESET: Record<PlayMode, string> = {
-  normal: 'flat',
-  'vocal-enhance': 'vocal-enhance',
-  'instrument-focus': 'instrument-focus',
-  'bass-boost': 'bass-boost',
-};
-
 const initialState: AudioPlayerState = {
   currentTrack: null,
   isPlaying: false,
@@ -70,12 +58,13 @@ const initialState: AudioPlayerState = {
   playlist: [],
   currentTrackIndex: -1,
   mode: 'normal',
-  equalizerBands: [...equalizerPresets.flat],
+  equalizerBands: [...EQ_PRESETS.flat],
   equalizerPreset: 'flat',
+  equalizerRange: EQ_DEFAULT_RANGE,
+  equalizerWidth: EQ_DEFAULT_Q,
   effects: initialEffects,
   isShuffled: false,
   repeatMode: 'none',
-  externalSource: 'none',
   audioInfo: null,
 };
 
@@ -95,8 +84,6 @@ function buildShuffleOrder(playlist: Track[], keepId: string | null): number[] {
 export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const audioEngineRef = useRef<AudioEngine | null>(null);
   const shuffleOrderRef = useRef<number[]>([]);
-  // Guards the YouTube auto advance so a finished video is only handled once.
-  const ytEndedHandledRef = useRef(false);
 
   const storeRef = useRef<PlayerStore | null>(null);
   if (!storeRef.current) {
@@ -104,17 +91,12 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }
   const store = storeRef.current;
 
-  // The provider only needs these two flags. Subscribing to the whole state would re-render
-  // the provider ten times a second while a track plays.
+  // The provider only needs this flag. Subscribing to the whole state would re-render the
+  // provider on every playback update.
   const isPlaying = useSyncExternalStore(
     store.subscribe,
     () => store.getState().isPlaying,
     () => store.getState().isPlaying
-  );
-  const externalSource = useSyncExternalStore(
-    store.subscribe,
-    () => store.getState().externalSource,
-    () => store.getState().externalSource
   );
 
   // ---------------------------------------------------------------------
@@ -137,7 +119,7 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, [store]);
 
   // ---------------------------------------------------------------------
-  // Restore the saved preferences
+  // Restore saved preferences
   // ---------------------------------------------------------------------
   useEffect(() => {
     const preferences = loadPreferences();
@@ -148,11 +130,16 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       ...(preferences.volume !== undefined ? { volume: preferences.volume } : {}),
       ...(preferences.equalizerBands ? { equalizerBands: preferences.equalizerBands } : {}),
       ...(preferences.equalizerPreset ? { equalizerPreset: preferences.equalizerPreset } : {}),
+      ...(preferences.equalizerRange !== undefined ? { equalizerRange: preferences.equalizerRange } : {}),
+      ...(preferences.equalizerWidth !== undefined ? { equalizerWidth: preferences.equalizerWidth } : {}),
       ...(preferences.effects ? { effects: preferences.effects } : {}),
       ...(preferences.mode ? { mode: preferences.mode } : {}),
       ...(preferences.isShuffled !== undefined ? { isShuffled: preferences.isShuffled } : {}),
       ...(preferences.repeatMode ? { repeatMode: preferences.repeatMode } : {}),
-      ...(preferences.playlist ? { playlist: preferences.playlist } : {}),
+      // Playlists saved before YouTube support was removed may still hold its entries.
+      ...(preferences.playlist
+        ? { playlist: preferences.playlist.filter((track) => !track.id.startsWith('yt-')) }
+        : {}),
     }));
 
     const engine = audioEngineRef.current;
@@ -160,6 +147,7 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
     if (preferences.volume !== undefined) engine.setVolume(preferences.volume);
     if (preferences.equalizerBands) engine.setAllEqualizerBands(preferences.equalizerBands);
+    if (preferences.equalizerWidth !== undefined) engine.setEqualizerWidth(preferences.equalizerWidth);
     if (preferences.effects) {
       engine.setReverbSettings(preferences.effects.reverb);
       engine.setChorusSettings(preferences.effects.chorus);
@@ -170,7 +158,7 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, [store]);
 
   // ---------------------------------------------------------------------
-  // Persist the preferences (debounced)
+  // Persist preferences (debounced)
   // ---------------------------------------------------------------------
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -183,11 +171,13 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
           volume: current.volume,
           equalizerBands: current.equalizerBands,
           equalizerPreset: current.equalizerPreset,
+          equalizerRange: current.equalizerRange,
+          equalizerWidth: current.equalizerWidth,
           effects: current.effects,
           mode: current.mode,
           isShuffled: current.isShuffled,
           repeatMode: current.repeatMode,
-          // Local files cannot be serialized - only keep remote sources.
+          // Local files cannot be serialized, so only remote sources are kept.
           playlist: current.playlist.filter((track) => typeof track.src === 'string'),
         });
       }, 800);
@@ -200,7 +190,7 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, [store]);
 
   // ---------------------------------------------------------------------
-  // Playback helpers
+  // Playback
   // ---------------------------------------------------------------------
   const applyEngineState = useCallback(() => {
     const engine = audioEngineRef.current;
@@ -209,6 +199,7 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     const current = store.getState();
     engine.setVolume(current.volume);
     engine.setAllEqualizerBands(current.equalizerBands);
+    engine.setEqualizerWidth(current.equalizerWidth);
     engine.setReverbSettings(current.effects.reverb);
     engine.setChorusSettings(current.effects.chorus);
     engine.setCompressorSettings(current.effects.compressor);
@@ -217,15 +208,6 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, [store]);
 
   const play = useCallback(() => {
-    const current = store.getState();
-
-    if (current.externalSource === 'youtube') {
-      YouTubeController.play();
-      store.setState((prev) => ({ ...prev, isPlaying: true, error: null }));
-      MediaSessionService.updatePlaybackState('playing');
-      return;
-    }
-
     if (audioEngineRef.current) {
       audioEngineRef.current.play();
       store.setState((prev) => ({ ...prev, isPlaying: true, error: null }));
@@ -234,15 +216,6 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, [store]);
 
   const pause = useCallback(() => {
-    const current = store.getState();
-
-    if (current.externalSource === 'youtube') {
-      YouTubeController.pause();
-      store.setState((prev) => ({ ...prev, isPlaying: false }));
-      MediaSessionService.updatePlaybackState('paused');
-      return;
-    }
-
     if (audioEngineRef.current) {
       audioEngineRef.current.pause();
       store.setState((prev) => ({ ...prev, isPlaying: false }));
@@ -251,12 +224,6 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, [store]);
 
   const stop = useCallback(() => {
-    if (store.getState().externalSource === 'youtube') {
-      YouTubeController.stop();
-      store.setState((prev) => ({ ...prev, isPlaying: false, currentTime: 0 }));
-      return;
-    }
-
     if (audioEngineRef.current) {
       audioEngineRef.current.stop();
       store.setState((prev) => ({ ...prev, isPlaying: false, currentTime: 0 }));
@@ -266,13 +233,7 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const setVolume = useCallback(
     (volume: number) => {
       const clamped = Math.max(0, Math.min(1, volume));
-
-      if (store.getState().externalSource === 'youtube') {
-        YouTubeController.setVolume(clamped);
-      } else {
-        audioEngineRef.current?.setVolume(clamped);
-      }
-
+      audioEngineRef.current?.setVolume(clamped);
       store.setState((prev) => ({ ...prev, volume: clamped }));
     },
     [store]
@@ -281,13 +242,7 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const seekTo = useCallback(
     (time: number) => {
       const clamped = Math.max(0, time);
-
-      if (store.getState().externalSource === 'youtube') {
-        YouTubeController.seekTo(clamped);
-      } else {
-        audioEngineRef.current?.setCurrentTime(clamped);
-      }
-
+      audioEngineRef.current?.setCurrentTime(clamped);
       store.setState((prev) => ({ ...prev, currentTime: clamped }));
     },
     [store]
@@ -306,7 +261,6 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         isLoading: true,
         error: null,
         currentTrack: track,
-        externalSource: 'none',
         currentTime: 0,
         duration: track.duration || 0,
       }));
@@ -321,8 +275,8 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         store.setState((prev) => {
           const playlistIndex = prev.playlist.findIndex((item) => item.id === track.id);
 
-          // The real duration is only known once the file has been decoded - write it back so
-          // the playlist does not keep showing "0:00".
+          // The real duration is only known after decoding. Write it back so the playlist does
+          // not keep showing 0:00.
           const playlist =
             duration && playlistIndex >= 0 && prev.playlist[playlistIndex].duration !== duration
               ? prev.playlist.map((item, index) => (index === playlistIndex ? { ...item, duration } : item))
@@ -346,7 +300,6 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
           duration: duration || track.duration || 0,
         });
 
-        // Start playing as soon as the track is ready.
         play();
       } catch (error) {
         const message = error instanceof Error ? error.message : 'The track could not be loaded.';
@@ -354,68 +307,6 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }
     },
     [applyEngineState, play, store]
-  );
-
-  const loadYouTube = useCallback(
-    async (url: string, meta?: Partial<Track>, containerId?: string) => {
-      store.setState((prev) => ({ ...prev, isLoading: true, error: null }));
-
-      try {
-        await YouTubeController.load(containerId ?? YT_PLAYER_CONTAINER_ID, url);
-
-        const track: Track = {
-          id: `yt-${YouTubeController.parseVideoId(url) ?? Date.now()}`,
-          title: meta?.title || 'YouTube Video',
-          artist: meta?.artist || 'YouTube',
-          duration: 0,
-          src: url,
-          artwork: meta?.artwork,
-          source: 'youtube',
-        };
-
-        store.setState((prev) => ({
-          ...prev,
-          currentTrack: track,
-          externalSource: 'youtube',
-          isLoading: false,
-          isPlaying: true,
-          currentTime: 0,
-          duration: 0,
-        }));
-
-        MediaSessionService.updateMetadata({
-          id: track.id,
-          title: track.title,
-          artist: track.artist,
-          artwork: track.artwork,
-          duration: 0,
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'The YouTube video could not be loaded.';
-        store.setState((prev) => ({ ...prev, isLoading: false, error: message }));
-      }
-    },
-    [store]
-  );
-
-  /** Plays a track, routing YouTube entries to the IFrame player. */
-  const playTrack = useCallback(
-    async (track: Track) => {
-      const isYouTube =
-        track.source === 'youtube' ||
-        (typeof track.src === 'string' && YouTubeController.isYouTubeUrl(track.src));
-
-      if (isYouTube && typeof track.src === 'string') {
-        await loadYouTube(track.src, {
-          title: track.title,
-          artist: track.artist,
-          artwork: track.artwork,
-        });
-      } else {
-        await loadTrack(track);
-      }
-    },
-    [loadTrack, loadYouTube]
   );
 
   // ---------------------------------------------------------------------
@@ -449,8 +340,8 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
 
     store.setState((prev) => ({ ...prev, currentTrackIndex: nextIndex }));
-    playTrack(playlist[nextIndex]);
-  }, [playTrack, store]);
+    loadTrack(playlist[nextIndex]);
+  }, [loadTrack, store]);
 
   const previousTrack = useCallback(() => {
     const { playlist, currentTrackIndex, repeatMode, isShuffled } = store.getState();
@@ -481,8 +372,8 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
 
     store.setState((prev) => ({ ...prev, currentTrackIndex: previousIndex }));
-    playTrack(playlist[previousIndex]);
-  }, [playTrack, store]);
+    loadTrack(playlist[previousIndex]);
+  }, [loadTrack, store]);
 
   const playTrackAtIndex = useCallback(
     (index: number) => {
@@ -490,13 +381,13 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       if (index < 0 || index >= playlist.length) return;
 
       store.setState((prev) => ({ ...prev, currentTrackIndex: index }));
-      playTrack(playlist[index]);
+      loadTrack(playlist[index]);
     },
-    [playTrack, store]
+    [loadTrack, store]
   );
 
   // ---------------------------------------------------------------------
-  // Media Session - handlers are installed once and read the latest state
+  // Media Session. Handlers are installed once and read the latest state.
   // ---------------------------------------------------------------------
   useEffect(() => {
     MediaSessionService.setupHandlers({
@@ -514,7 +405,7 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, [nextTrack, pause, play, previousTrack, seekTo, store]);
 
   // ---------------------------------------------------------------------
-  // Auto advance when a track finishes
+  // Auto advance when a track ends
   // ---------------------------------------------------------------------
   useEffect(() => {
     const engine = audioEngineRef.current;
@@ -536,10 +427,10 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, [nextTrack, play, seekTo, store]);
 
   // ---------------------------------------------------------------------
-  // Time synchronisation (throttled to ~10fps)
+  // Time sync (about 10 updates a second, only while playing)
   // ---------------------------------------------------------------------
   useEffect(() => {
-    if (!isPlaying && externalSource !== 'youtube') return;
+    if (!isPlaying) return;
 
     let frame = 0;
     let lastUpdate = 0;
@@ -548,45 +439,16 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       if (timestamp - lastUpdate >= 100) {
         lastUpdate = timestamp;
 
-        if (store.getState().externalSource === 'youtube') {
-          const yt = YouTubeController.getState();
+        const engine = audioEngineRef.current;
+        if (engine) {
+          const currentTime = engine.getCurrentTime();
+          const duration = engine.getDuration();
           store.setState((prev) => ({
             ...prev,
-            currentTime: yt.currentTime,
-            duration: yt.duration,
-            isPlaying: yt.playing,
-            error: yt.error ?? prev.error,
+            currentTime,
+            duration: duration || prev.duration,
           }));
-          MediaSessionService.updatePosition(yt.currentTime, yt.duration);
-
-          // A YouTube video that reached its end advances the playlist, the same way a file
-          // that runs out does.
-          if (yt.ended) {
-            if (!ytEndedHandledRef.current) {
-              ytEndedHandledRef.current = true;
-              const { repeatMode } = store.getState();
-              if (repeatMode === 'one') {
-                YouTubeController.seekTo(0);
-                play();
-              } else {
-                nextTrack();
-              }
-            }
-          } else {
-            ytEndedHandledRef.current = false;
-          }
-        } else {
-          const engine = audioEngineRef.current;
-          if (engine) {
-            const currentTime = engine.getCurrentTime();
-            const duration = engine.getDuration();
-            store.setState((prev) => ({
-              ...prev,
-              currentTime,
-              duration: duration || prev.duration,
-            }));
-            MediaSessionService.updatePosition(currentTime, duration);
-          }
+          MediaSessionService.updatePosition(currentTime, duration);
         }
       }
 
@@ -595,30 +457,64 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [isPlaying, externalSource, nextTrack, play, store]);
+  }, [isPlaying, store]);
 
   // ---------------------------------------------------------------------
-  // Equalizer / effects
+  // Equalizer
   // ---------------------------------------------------------------------
   const setEqualizerBand = useCallback(
     (index: number, gain: number) => {
-      audioEngineRef.current?.setEqualizerBand(index, gain);
+      if (index < 0 || index >= EQ_BAND_COUNT) return;
+
+      const range = store.getState().equalizerRange;
+      const clamped = clampBandGain(gain, range);
+      audioEngineRef.current?.setEqualizerBand(index, clamped);
+
       store.setState((prev) => ({
         ...prev,
         equalizerPreset: 'custom',
-        equalizerBands: prev.equalizerBands.map((band, i) => (i === index ? gain : band)),
+        equalizerBands: prev.equalizerBands.map((band, i) => (i === index ? clamped : band)),
       }));
+    },
+    [store]
+  );
+
+  const applyBands = useCallback(
+    (preset: string, gains: number[]) => {
+      const range = store.getState().equalizerRange;
+      const bounded = gains.map((gain) => clampBandGain(gain, range));
+      audioEngineRef.current?.setAllEqualizerBands(bounded);
+      store.setState((prev) => ({ ...prev, equalizerPreset: preset, equalizerBands: bounded }));
     },
     [store]
   );
 
   const setEqualizerPreset = useCallback(
     (preset: string) => {
-      const gains = equalizerPresets[preset];
+      const gains = EQ_PRESETS[preset];
       if (!gains) return;
+      applyBands(preset, gains);
+    },
+    [applyBands]
+  );
 
-      audioEngineRef.current?.setAllEqualizerBands(gains);
-      store.setState((prev) => ({ ...prev, equalizerPreset: preset, equalizerBands: [...gains] }));
+  const setEqualizerRange = useCallback(
+    (range: number) => {
+      // Shrinking the range pulls any band that is outside it back inside.
+      store.setState((prev) => {
+        const bands = prev.equalizerBands.map((gain) => clampBandGain(gain, range));
+        audioEngineRef.current?.setAllEqualizerBands(bands);
+        return { ...prev, equalizerRange: range, equalizerBands: bands };
+      });
+    },
+    [store]
+  );
+
+  const setEqualizerWidth = useCallback(
+    (width: number) => {
+      const q = clampQ(width);
+      audioEngineRef.current?.setEqualizerWidth(q);
+      store.setState((prev) => ({ ...prev, equalizerWidth: q }));
     },
     [store]
   );
@@ -626,17 +522,11 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const setMode = useCallback(
     (mode: PlayMode) => {
       const preset = MODE_PRESET[mode] ?? 'flat';
-      const gains = equalizerPresets[preset] ?? equalizerPresets.flat;
-
-      audioEngineRef.current?.setAllEqualizerBands(gains);
-      store.setState((prev) => ({
-        ...prev,
-        mode,
-        equalizerPreset: preset,
-        equalizerBands: [...gains],
-      }));
+      const gains = EQ_PRESETS[preset] ?? EQ_PRESETS.flat;
+      applyBands(preset, gains);
+      store.setState((prev) => ({ ...prev, mode }));
     },
-    [store]
+    [applyBands, store]
   );
 
   const updateEffects = useCallback(
@@ -659,7 +549,7 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   );
 
   // ---------------------------------------------------------------------
-  // Playlist management
+  // Playlist
   // ---------------------------------------------------------------------
   const addToPlaylist = useCallback(
     (track: Track) => {
@@ -762,7 +652,7 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, [stop, store]);
 
   // ---------------------------------------------------------------------
-  // Shuffle / repeat
+  // Shuffle and repeat
   // ---------------------------------------------------------------------
   const toggleShuffle = useCallback(() => {
     store.setState((prev) => {
@@ -777,7 +667,7 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const toggleRepeat = useCallback(() => {
     store.setState((prev) => ({
       ...prev,
-      repeatMode: prev.repeatMode === 'none' ? 'all' : prev.repeatMode === 'all' ? 'one' : 'none',
+      repeatMode: nextRepeatMode(prev.repeatMode),
     }));
   }, [store]);
 
@@ -799,7 +689,6 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const actions = useMemo<AudioPlayerActions>(
     () => ({
       loadTrack,
-      loadYouTube,
       play,
       pause,
       stop,
@@ -810,6 +699,8 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setMode,
       setEqualizerBand,
       setEqualizerPreset,
+      setEqualizerRange,
+      setEqualizerWidth,
       updateEffects,
       toggleShuffle,
       toggleRepeat,
@@ -824,7 +715,6 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }),
     [
       loadTrack,
-      loadYouTube,
       play,
       pause,
       stop,
@@ -835,6 +725,8 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setMode,
       setEqualizerBand,
       setEqualizerPreset,
+      setEqualizerRange,
+      setEqualizerWidth,
       updateEffects,
       toggleShuffle,
       toggleRepeat,
@@ -855,3 +747,9 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     </PlayerStoreContext.Provider>
   );
 };
+
+function nextRepeatMode(mode: RepeatMode): RepeatMode {
+  if (mode === 'none') return 'all';
+  if (mode === 'all') return 'one';
+  return 'none';
+}

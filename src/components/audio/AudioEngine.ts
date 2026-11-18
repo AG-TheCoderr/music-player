@@ -1,3 +1,13 @@
+import {
+  EQ_BAND_FREQUENCIES,
+  EQ_DEFAULT_Q,
+  clampBandGain,
+  clampQ,
+} from './equalizer';
+
+/** Hard limit for any band, regardless of the range the UI allows. */
+const EQ_MAX_GAIN = 24;
+
 export interface AudioEngineConfig {
   sampleRate: number;
   bufferSize: number;
@@ -46,7 +56,6 @@ export interface AudioEngineInfo {
   state: AudioContextState;
 }
 
-const EQ_FREQUENCIES = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
 
 /** Shared empty buffer returned when no analyser is available. */
 const EMPTY_DATA = new Uint8Array(0);
@@ -54,7 +63,7 @@ const EMPTY_DATA = new Uint8Array(0);
 /**
  * Web Audio graph:
  *
- *   source -> EQ(10 band) -> distortion
+ *   source -> EQ(31 band) -> distortion
  *          -> chorus (dry/wet + LFO modulated delay)
  *          -> reverb (dry/wet + convolver)
  *          -> compressor (glue / safety limiter)
@@ -145,11 +154,11 @@ export class AudioEngine {
     this.analyserNode.fftSize = this.config.bufferSize;
     this.analyserNode.smoothingTimeConstant = 0.8;
 
-    this.equalizerNodes = EQ_FREQUENCIES.map((frequency) => {
+    this.equalizerNodes = EQ_BAND_FREQUENCIES.map((frequency) => {
       const filter = ctx.createBiquadFilter();
       filter.type = 'peaking';
       filter.frequency.value = frequency;
-      filter.Q.value = 1;
+      filter.Q.value = EQ_DEFAULT_Q;
       filter.gain.value = 0;
       return filter;
     });
@@ -422,7 +431,15 @@ export class AudioEngine {
   setEqualizerBand(index: number, gain: number): void {
     const node = this.equalizerNodes[index];
     if (node) {
-      this.ramp(node.gain, Math.max(-24, Math.min(24, gain)), 0.02);
+      this.ramp(node.gain, clampBandGain(gain, EQ_MAX_GAIN), 0.02);
+    }
+  }
+
+  /** Sets the bandwidth (Q) of every band. Lower Q is a wider, smoother curve. */
+  setEqualizerWidth(q: number): void {
+    const value = clampQ(q);
+    for (const node of this.equalizerNodes) {
+      this.ramp(node.Q, value, 0.05);
     }
   }
 

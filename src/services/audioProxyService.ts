@@ -11,32 +11,10 @@ export interface SearchResult {
   platform: string;
 }
 
-export interface ExtractResult {
-  streamUrl: string;
-  title: string;
-  artist: string;
-  thumbnail?: string;
-}
-
-export type SearchPlatform = 'youtube' | 'soundcloud' | 'spotify' | 'all';
-
-/** Platforms the backend can actually query. */
-const SUPPORTED_PLATFORMS: SearchPlatform[] = ['all', 'youtube'];
-
-interface YoutubeSearchResponse {
-  success: boolean;
-  error?: string;
-  results?: SearchResult[];
-}
-
 interface AudioProxyResponse {
   success: boolean;
   error?: string;
   results?: SearchResult[];
-  streamUrl?: string;
-  title?: string;
-  artist?: string;
-  thumbnail?: string;
 }
 
 export class AudioProxyService {
@@ -65,102 +43,29 @@ export class AudioProxyService {
     }
   }
 
-  /** Search for music across platforms. */
-  static async searchMusic(query: string, platform: SearchPlatform = 'all'): Promise<SearchResult[]> {
-    if (!SUPPORTED_PLATFORMS.includes(platform)) {
-      throw new Error(
-        `Searching ${platform} is not available - no ${platform} API credentials are configured. Use "all" or "youtube".`
-      );
-    }
-
+  /** Searches the catalogue (iTunes previews) through the audio-proxy function. */
+  static async searchMusic(query: string): Promise<SearchResult[]> {
     if (!query || !query.trim()) {
       throw new Error('Enter something to search for.');
     }
 
-    // YouTube search uses the dedicated function.
-    if (platform === 'youtube') {
-      const data = await invokeEdgeFunction<YoutubeSearchResponse>('youtube-search', {
-        query,
-        maxResults: 20,
-      });
-      assertFunctionSucceeded(data);
-      return data?.results ?? [];
-    }
-
-    // For 'all', merge the preview results with the YouTube results.
-    const [baseResult, ytResult] = await Promise.allSettled([
-      invokeEdgeFunction<AudioProxyResponse>('audio-proxy', { action: 'search', query, platform: 'all' }).then(
-        (data) => {
-          assertFunctionSucceeded(data);
-          return data;
-        }
-      ),
-      invokeEdgeFunction<YoutubeSearchResponse>('youtube-search', { query, maxResults: 15 }).then((data) => {
-        assertFunctionSucceeded(data);
-        return data;
-      }),
-    ]);
-
-    const baseResults = baseResult.status === 'fulfilled' ? baseResult.value?.results ?? [] : [];
-    // A missing YT_API_KEY should not break the whole search.
-    const ytResults = ytResult.status === 'fulfilled' ? ytResult.value?.results ?? [] : [];
-
-    // De-duplicate by id + platform
-    const seen = new Set<string>();
-    const merged: SearchResult[] = [];
-    for (const arr of [baseResults, ytResults]) {
-      for (const r of arr) {
-        const key = `${r.platform}:${r.id}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          merged.push(r);
-        }
-      }
-    }
-
-    // An empty result set plus a failure must not look like "nothing matched".
-    if (!merged.length) {
-      const failure = baseResult.status === 'rejected' ? baseResult.reason : ytResult.status === 'rejected' ? ytResult.reason : null;
-      if (failure) {
-        throw failure instanceof Error ? failure : new Error('The search backend is unavailable. Please try again later.');
-      }
-    }
-
-    return merged;
-  }
-
-  /**
-   * Extracts a playable audio stream URL from a page URL.
-   *
-   * Throws with the backend's reason when extraction is refused (for example SoundCloud, which
-   * the backend cannot extract). Returning null here used to hide that reason behind a generic
-   * "extraction failed" message.
-   */
-  static async extractAudioUrl(url: string): Promise<ExtractResult> {
-    if (!url || !/^https?:\/\//i.test(url)) {
-      throw new Error('Only http(s) URLs can be extracted.');
-    }
-
     const data = await invokeEdgeFunction<AudioProxyResponse>('audio-proxy', {
-      action: 'extract',
-      url,
+      action: 'search',
+      query: query.trim(),
+      platform: 'all',
     });
     assertFunctionSucceeded(data);
 
-    if (!data?.streamUrl) {
-      throw new Error('The backend returned no playable stream for this URL.');
+    // De-duplicate by platform and id.
+    const seen = new Set<string>();
+    const results: SearchResult[] = [];
+    for (const result of data?.results ?? []) {
+      const key = `${result.platform}:${result.id}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        results.push(result);
+      }
     }
-
-    return {
-      streamUrl: data.streamUrl,
-      title: data.title ?? 'Unknown Track',
-      artist: data.artist ?? 'Unknown Artist',
-      thumbnail: data.thumbnail,
-    };
-  }
-
-  /** Check if a URL points at a platform that needs proxy extraction. */
-  static needsProxy(url: string): boolean {
-    return /(?:youtube\.com|youtu\.be|music\.youtube\.com|soundcloud\.com|spotify\.com)/.test(url);
+    return results;
   }
 }
