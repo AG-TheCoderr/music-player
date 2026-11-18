@@ -1,3 +1,4 @@
+import { publicUrl } from '@/utils/publicUrl';
 // Media Session API service for mobile notifications and lock screen controls
 export interface MediaSessionTrack {
   id: string;
@@ -80,7 +81,7 @@ export class MediaSessionService {
               { src: track.artwork, sizes: '512x512', type: 'image/jpeg' },
               { src: track.artwork, sizes: '256x256', type: 'image/jpeg' },
             ]
-          : [{ src: '/placeholder.svg', sizes: '512x512', type: 'image/svg+xml' }],
+          : [{ src: publicUrl('placeholder.svg'), sizes: '512x512', type: 'image/svg+xml' }],
       });
     } catch (error) {
       console.warn('Failed to update media session metadata:', error);

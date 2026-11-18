@@ -1,3 +1,4 @@
+import { publicUrl } from '@/utils/publicUrl';
 import React, { useRef, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -255,8 +256,8 @@ export const FileLoader: React.FC = () => {
                 title: 'Demo Track - Ambient Soundscape',
                 artist: 'Sonic Studio Pro',
                 duration: 0,
-                src: '/audio/demo.mp3',
-                artwork: '/placeholder.svg',
+                src: publicUrl('audio/demo.mp3'),
+                artwork: publicUrl('placeholder.svg'),
                 source: 'audio',
               });
               toast({ title: 'Demo track added', description: 'The demo track is now in your playlist.' });

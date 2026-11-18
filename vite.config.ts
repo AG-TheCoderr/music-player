@@ -4,7 +4,21 @@ import path from 'path';
 import { componentTagger } from 'lovable-tagger';
 
 // https://vitejs.dev/config/
+// GitHub Pages serves project sites from `/<repo>/`. The Pages workflow sets GITHUB_PAGES=true;
+// local development and the sandbox preview keep serving from the root.
+const base = process.env.GITHUB_PAGES === 'true' ? '/music-player/' : '/';
+
+// Meta tags such as og:image need an absolute URL, which must also follow the base path.
+const htmlBasePlugin = {
+  name: 'html-base-paths',
+  transformIndexHtml(html: string) {
+    return html.replace(/content="\/og-image\.jpg"/g, `content="${base}og-image.jpg"`);
+  },
+};
+
+// https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
+  base,
   server: {
     // 0.0.0.0 so the dev server is reachable from outside the container.
     host: '0.0.0.0',
@@ -18,6 +32,7 @@ export default defineConfig(({ mode }) => ({
   },
   plugins: [
     react(),
+    htmlBasePlugin,
     mode === 'development' && componentTagger(),
   ].filter(Boolean),
   resolve: {

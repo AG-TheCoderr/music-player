@@ -1,3 +1,4 @@
+import { publicUrl } from '@/utils/publicUrl';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -368,7 +369,7 @@ export const MusicSearch: React.FC = () => {
                         decoding="async"
                         referrerPolicy="no-referrer"
                         onError={(e) => {
-                          e.currentTarget.src = '/placeholder.svg';
+                          e.currentTarget.src = publicUrl('placeholder.svg');
                         }}
                       />
                     ) : (
