@@ -514,8 +514,9 @@ export class AudioEngine {
   getTimeDomainData(): Uint8Array {
     if (!this.analyserNode) return EMPTY_DATA;
 
-    if (!this.timeDomainBuffer || this.timeDomainBuffer.length !== this.analyserNode.frequencyBinCount) {
-      this.timeDomainBuffer = new Uint8Array(this.analyserNode.frequencyBinCount);
+    // Time domain data holds `fftSize` samples; frequency data only holds half that.
+    if (!this.timeDomainBuffer || this.timeDomainBuffer.length !== this.analyserNode.fftSize) {
+      this.timeDomainBuffer = new Uint8Array(this.analyserNode.fftSize);
     }
 
     this.analyserNode.getByteTimeDomainData(this.timeDomainBuffer);

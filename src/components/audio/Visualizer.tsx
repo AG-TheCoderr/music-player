@@ -23,6 +23,8 @@ export const Visualizer: React.FC<VisualizerProps> = ({
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>();
+  /** Latest painter, so the resize handler can repaint a paused canvas. */
+  const renderRef = useRef<() => void>(() => undefined);
   /** CSS pixel size of the canvas - the backing store is scaled by the device pixel ratio. */
   const sizeRef = useRef({ width, height });
   const { getFrequencyData, getTimeDomainData } = usePlayerActions();
@@ -35,7 +37,8 @@ export const Visualizer: React.FC<VisualizerProps> = ({
     resolvedColorRef.current = getResolvedCSSColor(color);
   }, [color]);
 
-  const draw = useCallback(() => {
+  /** Paints one frame. It never schedules another one - see `draw`. */
+  const render = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -55,24 +58,31 @@ export const Visualizer: React.FC<VisualizerProps> = ({
 
     if (isSilent) {
       drawIdle(ctx, cssWidth, cssHeight, resolvedColor);
-    } else {
-      switch (type) {
-        case 'bars':
-          drawBars(ctx, frequencyData, cssWidth, cssHeight, barCount, resolvedColor);
-          break;
-        case 'wave':
-          drawWave(ctx, timeDomainData, cssWidth, cssHeight, resolvedColor);
-          break;
-        case 'circular':
-          drawCircular(ctx, frequencyData, cssWidth, cssHeight, resolvedColor);
-          break;
-      }
+      return;
     }
 
+    switch (type) {
+      case 'bars':
+        drawBars(ctx, frequencyData, cssWidth, cssHeight, barCount, resolvedColor);
+        break;
+      case 'wave':
+        drawWave(ctx, timeDomainData, cssWidth, cssHeight, resolvedColor);
+        break;
+      case 'circular':
+        drawCircular(ctx, frequencyData, cssWidth, cssHeight, resolvedColor);
+        break;
+    }
+  }, [getFrequencyData, getTimeDomainData, type, barCount]);
+
+  renderRef.current = render;
+
+  /** The animation loop: paint, then ask for the next frame while playing. */
+  const draw = useCallback(() => {
+    render();
     if (isPlaying) {
       animationRef.current = requestAnimationFrame(draw);
     }
-  }, [getFrequencyData, getTimeDomainData, isPlaying, type, barCount]);
+  }, [render, isPlaying]);
 
   useEffect(() => {
     if (isPlaying) {
@@ -112,6 +122,10 @@ export const Visualizer: React.FC<VisualizerProps> = ({
 
       canvas.style.width = responsive ? '100%' : `${width}px`;
       canvas.style.height = responsive ? '100%' : `${height}px`;
+
+      // Resizing wipes the canvas. While playing the animation loop repaints anyway; while
+      // paused nothing else would, so paint once here.
+      renderRef.current();
     };
 
     applySize();
@@ -158,11 +172,11 @@ function drawIdle(
 }
 
 /**
- * The gradient only depends on the size and the colour, so it is cached instead of being
- * rebuilt on every frame.
+ * The gradient only depends on the size and the colour, so it is cached per canvas context
+ * instead of being rebuilt on every frame. A module-level cache would be shared by every
+ * visualiser on the page and thrash between them.
  */
-let barGradient: CanvasGradient | null = null;
-let barGradientKey = '';
+const gradientCache = new WeakMap<CanvasRenderingContext2D, { key: string; gradient: CanvasGradient }>();
 
 function getBarGradient(
   ctx: CanvasRenderingContext2D,
@@ -171,16 +185,26 @@ function getBarGradient(
   resolvedColor: string
 ): CanvasGradient {
   const key = `${width}x${height}:${resolvedColor}`;
-  if (barGradient && barGradientKey === key) return barGradient;
+  const cached = gradientCache.get(ctx);
+  if (cached && cached.key === key) return cached.gradient;
 
   const gradient = ctx.createLinearGradient(0, height, 0, 0);
   gradient.addColorStop(0, createColorWithAlpha(resolvedColor, 0.25));
   gradient.addColorStop(0.5, createColorWithAlpha(resolvedColor, 0.5));
   gradient.addColorStop(1, resolvedColor);
 
-  barGradient = gradient;
-  barGradientKey = key;
+  gradientCache.set(ctx, { key, gradient });
   return gradient;
+}
+
+/** Rounded top corners where supported; older browsers get square bars. */
+function addBar(path: Path2D, x: number, y: number, w: number, h: number) {
+  if (w <= 0 || h <= 0) return;
+  if (typeof path.roundRect === 'function') {
+    path.roundRect(x, y, w, h, [2, 2, 0, 0]);
+  } else {
+    path.rect(x, y, w, h);
+  }
 }
 
 function drawBars(
@@ -192,17 +216,25 @@ function drawBars(
   resolvedColor: string
 ) {
   const barWidth = width / barCount;
-  const step = Math.max(1, Math.floor(frequencyData.length / barCount));
+  const minBin = 1;
+  const maxBin = frequencyData.length;
 
-  // All bars are collected in a single path. Filling that path once with a shadow costs one
-  // blur pass instead of one per bar, which is the difference between a smooth visualiser and
-  // a stuttering one on a slow device.
+  // Bands are spaced logarithmically, as hearing is, and each bar shows the average of its
+  // bins. Sampling one linear bin per bar crowds the bass into the first bars and jitters.
   const path = new Path2D();
   for (let i = 0; i < barCount; i++) {
-    const barHeight = (frequencyData[i * step] / 255) * height;
-    const x = i * barWidth;
-    const y = height - barHeight;
-    path.roundRect(x + 1, y, Math.max(0, barWidth - 2), barHeight, [2, 2, 0, 0]);
+    const start = Math.floor(minBin * Math.pow(maxBin / minBin, i / barCount));
+    const end = Math.max(
+      start + 1,
+      Math.floor(minBin * Math.pow(maxBin / minBin, (i + 1) / barCount))
+    );
+
+    let sum = 0;
+    for (let bin = start; bin < end && bin < maxBin; bin++) sum += frequencyData[bin];
+    const average = sum / Math.max(1, end - start);
+
+    const barHeight = (average / 255) * height;
+    addBar(path, i * barWidth + 1, height - barHeight, Math.max(0, barWidth - 2), barHeight);
   }
 
   // The glow.

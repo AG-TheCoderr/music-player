@@ -121,6 +121,12 @@ class FakeAudioContext {
   createAnalyser() {
     const node = new FakeNode('analyser');
     node.frequencyBinCount = 1024;
+    node.getByteTimeDomainData = (buffer) => {
+      node.lastTimeDomainLength = buffer.length;
+    };
+    node.getByteFrequencyData = (buffer) => {
+      node.lastFrequencyLength = buffer.length;
+    };
     return node;
   }
   createBiquadFilter() {
@@ -255,6 +261,11 @@ checks.push(['EQ band applied', engine.equalizerNodes[0].gain.value === 6]);
 // The impulse response is generated on a short debounce.
 await new Promise((resolve) => setTimeout(resolve, 250));
 checks.push(['reverb impulse generated', engine.reverbConvolver?.buffer != null]);
+
+// The waveform must read the full analysis window (fftSize samples), not half of it.
+const timeDomain = engine.getTimeDomainData();
+checks.push(['time domain buffer holds the full fftSize window', timeDomain.length === engine.analyserNode.fftSize]);
+checks.push(['frequency buffer holds frequencyBinCount bins', engine.getFrequencyData().length === engine.analyserNode.frequencyBinCount]);
 
 let failed = 0;
 for (const [name, ok] of checks) {
