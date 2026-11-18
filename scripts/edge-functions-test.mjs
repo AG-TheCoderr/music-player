@@ -77,7 +77,7 @@ check('returns the parsed body', parsed.value === 42);
 const failureCases = [
   [404, { error: 'not found' }, /not found/i],
   [401, { error: 'unauthorized' }, /rejected the request/i],
-  [500, { error: 'boom' }, /ran into an error/i],
+  [500, { error: "boom" }, /backend error/i],
   [400, { error: 'this platform is not supported' }, /not supported/i],
 ];
 
@@ -105,31 +105,21 @@ try {
 check('a network failure is reported', /could not be reached/i.test(networkMessage));
 
 // 4b. A 200 response that reports success:false is not silently treated as "no results".
-calls = mockFetch([{ status: 200, body: { success: false, error: 'YT_API_KEY is not configured' } }]);
+calls = mockFetch([{ status: 200, body: { success: false, error: 'Search quota exceeded' } }]);
 const rawPayload = await invokeEdgeFunction('demo', {});
 check('a 200 response is returned untouched', rawPayload.success === false);
 
-calls = mockFetch([{ status: 200, body: { success: false, error: 'YT_API_KEY is not configured' } }]);
-let ytKeyError = '';
+calls = mockFetch([{ status: 200, body: { success: false, error: 'Search quota exceeded' } }]);
+let quotaError = '';
 try {
-  await AudioProxyService.searchMusic('x', 'youtube');
+  await AudioProxyService.searchMusic('x');
 } catch (error) {
-  ytKeyError = error instanceof Error ? error.message : String(error);
+  quotaError = error instanceof Error ? error.message : String(error);
 }
-check('a missing YT_API_KEY is reported instead of looking empty', /YT_API_KEY/.test(ytKeyError));
+check('a backend failure is reported instead of looking empty', /quota/i.test(quotaError));
 
-// 5. Unsupported platforms fail before a request is made.
-calls = mockFetch([{ status: 200, body: { results: [] } }]);
-let platformError = '';
-try {
-  await AudioProxyService.searchMusic('daft punk', 'soundcloud');
-} catch (error) {
-  platformError = error instanceof Error ? error.message : String(error);
-}
-check('an unsupported platform is rejected', /not available/i.test(platformError));
-check('an unsupported platform does not hit the network', calls.length === 0);
-
-// 6. An empty query is rejected.
+// 5. An empty query is rejected before the network.
+calls = mockFetch([{ status: 200, body: { success: true, results: [] } }]);
 let queryError = '';
 try {
   await AudioProxyService.searchMusic('   ');
@@ -137,15 +127,9 @@ try {
   queryError = error instanceof Error ? error.message : String(error);
 }
 check('an empty query is rejected', /enter something/i.test(queryError));
+check('an empty query does not hit the network', calls.length === 0);
 
-// 7. YouTube search hits the youtube function and returns its results.
-calls = mockFetch([{ status: 200, body: { success: true, results: [{ id: 'abc', title: 'T', artist: 'A', duration: 10, streamUrl: 'https://youtu.be/abc', platform: 'youtube' }] } }]);
-const ytResults = await AudioProxyService.searchMusic('abc', 'youtube');
-check('youtube search calls the youtube function', calls[0].url.endsWith('/functions/v1/youtube-search'));
-check('youtube search sends the query', calls[0].init.body.includes('"query":"abc"'));
-check('youtube search returns the results', ytResults.length === 1 && ytResults[0].id === 'abc');
-
-// 8. The "all" search merges both sources and de-duplicates.
+// 6. Search sends one request to the audio proxy for the catalogue.
 calls = mockFetch([
   {
     status: 200,
@@ -153,101 +137,29 @@ calls = mockFetch([
       success: true,
       results: [
         { id: 'one', title: 'One', artist: 'A', duration: 1, streamUrl: 'https://x/1.mp3', platform: 'itunes' },
-        { id: 'dup', title: 'Dup', artist: 'A', duration: 1, streamUrl: 'https://x/2.mp3', platform: 'youtube' },
-      ],
-    },
-  },
-  {
-    status: 200,
-    body: {
-      success: true,
-      results: [
-        { id: 'dup', title: 'Dup', artist: 'A', duration: 1, streamUrl: 'https://x/2.mp3', platform: 'youtube' },
-        { id: 'two', title: 'Two', artist: 'A', duration: 1, streamUrl: 'https://x/3.mp3', platform: 'youtube' },
+        { id: 'dup', title: 'Dup', artist: 'A', duration: 1, streamUrl: 'https://x/2.mp3', platform: 'itunes' },
+        { id: 'dup', title: 'Dup', artist: 'A', duration: 1, streamUrl: 'https://x/2.mp3', platform: 'itunes' },
       ],
     },
   },
 ]);
-const allResults = await AudioProxyService.searchMusic('x', 'all');
-check('the merged search de-duplicates', allResults.length === 3);
-check('the merged search keeps the preview results', allResults.some((r) => r.platform === 'itunes'));
+const results = await AudioProxyService.searchMusic('  daft punk ');
+check('search calls the audio proxy once', calls.length === 1 && calls[0].url.endsWith('/functions/v1/audio-proxy'));
+check('search sends the trimmed query', calls[0].init.body.includes('"query":"daft punk"'));
+check('search sends the search action', calls[0].init.body.includes('"action":"search"'));
+check('search de-duplicates results', results.length === 2);
 
-// 9. One failing source does not break the whole search.
-calls = mockFetch([
-  { status: 500, body: { error: 'boom' } },
-  { status: 200, body: { success: true, results: [{ id: 'yt1', title: 'T', artist: 'A', duration: 1, streamUrl: 'https://x/4.mp3', platform: 'youtube' }] } },
-]);
-let partialError = '';
-let partialResults = [];
+// 7. A failed search surfaces the error.
+calls = mockFetch([{ status: 500, body: { error: 'boom' } }]);
+let failedSearch = '';
 try {
-  partialResults = await AudioProxyService.searchMusic('x', 'all');
+  await AudioProxyService.searchMusic('x');
 } catch (error) {
-  partialError = error instanceof Error ? error.message : String(error);
+  failedSearch = error instanceof Error ? error.message : String(error);
 }
-check('one failing source does not fail the search', partialResults.length === 1 && !partialError);
+check('a failed search throws', failedSearch.length > 0);
 
-// 10. When every source fails the real error is surfaced.
-calls = mockFetch([
-  { status: 500, body: { error: 'boom' } },
-  { status: 500, body: { error: 'boom' } },
-]);
-let allFailed = '';
-try {
-  await AudioProxyService.searchMusic('x', 'all');
-} catch (error) {
-  allFailed = error instanceof Error ? error.message : String(error);
-}
-check('a fully failed search throws', allFailed.length > 0);
-
-// 10b. An empty result plus one failed source must not look like "nothing matched".
-calls = mockFetch([
-  { status: 200, body: { success: true, results: [] } },
-  { status: 500, body: { error: 'boom' } },
-]);
-let emptyWithFailure = '';
-try {
-  await AudioProxyService.searchMusic('x', 'all');
-} catch (error) {
-  emptyWithFailure = error instanceof Error ? error.message : String(error);
-}
-check('an empty search with a failed source throws', emptyWithFailure.length > 0);
-
-// 11. Extraction.
-calls = mockFetch([{ status: 200, body: { success: true, streamUrl: 'https://cdn/track.mp3', title: 'T', artist: 'A' } }]);
-const extracted = await AudioProxyService.extractAudioUrl('https://example.com/watch');
-check('extraction calls the audio proxy', calls[0].url.endsWith('/functions/v1/audio-proxy'));
-check('extraction sends the extract action', calls[0].init.body.includes('"action":"extract"'));
-check('extraction returns the stream url', extracted.streamUrl === 'https://cdn/track.mp3');
-
-calls = mockFetch([{ status: 200, body: { success: false, error: 'Extraction of this platform is not supported on Edge.' } }]);
-let refusedMessage = '';
-try {
-  await AudioProxyService.extractAudioUrl('https://soundcloud.com/artist/track');
-} catch (error) {
-  refusedMessage = error instanceof Error ? error.message : String(error);
-}
-check('a refused extraction surfaces the backend reason', /not supported/i.test(refusedMessage));
-calls = mockFetch([{ status: 200, body: { success: true } }]);
-let emptyMessage = '';
-try {
-  await AudioProxyService.extractAudioUrl('https://example.com/watch');
-} catch (error) {
-  emptyMessage = error instanceof Error ? error.message : String(error);
-}
-check('an extraction with no stream is an error, not a silent null', /no playable stream/i.test(emptyMessage));
-
-// 12. Non http urls are rejected before the network.
-calls = mockFetch([{ status: 200, body: { success: true } }]);
-let extractError = '';
-try {
-  await AudioProxyService.extractAudioUrl('file:///etc/passwd');
-} catch (error) {
-  extractError = error instanceof Error ? error.message : String(error);
-}
-check('a non http url is rejected', /only http/i.test(extractError));
-check('a non http url does not hit the network', calls.length === 0);
-
-// 13. Proxy helpers.
+// 8. Proxy helpers.
 check('a relative url is not proxied', AudioProxyService.buildProxiedUrl('/audio/demo.mp3') === '/audio/demo.mp3');
 check(
   'a cross origin url is proxied',
@@ -258,8 +170,6 @@ check(
   AudioProxyService.buildProxiedUrl('https://test-project.supabase.co/functions/v1/audio-stream-proxy?url=x') ===
     'https://test-project.supabase.co/functions/v1/audio-stream-proxy?url=x'
 );
-check('a youtube url needs extraction', AudioProxyService.needsProxy('https://www.youtube.com/watch?v=x'));
-check('a plain mp3 does not need extraction', !AudioProxyService.needsProxy('https://cdn.example/track.mp3'));
 
 let failed = 0;
 for (const [name, ok] of checks) {

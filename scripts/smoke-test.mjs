@@ -65,11 +65,10 @@ const pressTab = async (text) => {
 const initialBody = doc.body.textContent || '';
 
 // --- interactions -------------------------------------------------------
-// 1. switch to the YouTube tab
-await pressTab('YouTube');
-const youtubeTab = findByText('button[role="tab"]', 'YouTube');
-const youtubeTabSelected = youtubeTab?.getAttribute('data-state') === 'active';
-const youtubeContainer = doc.getElementById('yt-player-root') !== null;
+// 1. the equaliser tab shows one slider per band
+await pressTab('Equalizer');
+await new Promise((resolve) => setTimeout(resolve, 300));
+const equalizerBandCount = doc.querySelectorAll('[role="slider"][aria-label$=" gain"]').length;
 
 // 2. switch back to the player tab
 await pressTab('Player');
@@ -118,7 +117,7 @@ await pressKey('m');
 const volumeRestored = volumeThumb()?.getAttribute('aria-valuenow');
 
 // Shortcuts must not fire while the user is typing.
-const searchInput = doc.querySelector('input[placeholder*="Search for songs"]');
+const searchInput = doc.querySelector('input[aria-label="Search music"]');
 await pressKey('2', searchInput);
 const typingDidNotSwitchTab = activeTab() === 'Player';
 
@@ -130,9 +129,8 @@ const checks = [
   ['player tab', body.includes('Player')],
   ['equalizer tab', body.includes('Equalizer')],
   ['effects tab', body.includes('Effects')],
-  ['youtube tab', body.includes('YouTube')],
   ['settings tab', body.includes('Settings')],
-  ['search panel', body.includes('Music Search')],
+  ['search panel', body.includes('Search')],
   ['load panel', body.includes('Load Music')],
   ['mode panel', body.includes('Audio Mode')],
   ['playlist panel', body.includes('Up Next')],
@@ -141,8 +139,8 @@ const checks = [
   ['track info present', body.includes('Track Info')],
   ['no hardcoded fake format', !body.includes('MP3 320kbps')],
   ['no hardcoded fake latency', !body.includes('46ms')],
-  ['youtube tab switches', youtubeTabSelected],
-  ['youtube player container exists', youtubeContainer],
+  ['no youtube tab', !body.includes('YouTube')],
+  ['equalizer has 31 band sliders', equalizerBandCount === 31],
   ['mode selection updates the badge', modeBadge !== undefined],
   ['demo track added to playlist', playlistHasTrack],
   ['playlist counter updated', playlistCount === '1'],

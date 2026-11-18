@@ -1,7 +1,6 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
-import { Badge } from '@/components/ui/badge';
 import {
   Play,
   Pause,
@@ -33,7 +32,6 @@ export const PlayerControls: React.FC = () => {
   const isPlaying = usePlayerSelector((state) => state.isPlaying);
   const isLoading = usePlayerSelector((state) => state.isLoading);
   const currentTrack = usePlayerSelector((state) => state.currentTrack);
-  const externalSource = usePlayerSelector((state) => state.externalSource);
   const volume = usePlayerSelector((state) => state.volume);
   const currentTime = usePlayerSelector((state) => state.currentTime);
   const duration = usePlayerSelector((state) => state.duration);
@@ -87,11 +85,6 @@ export const PlayerControls: React.FC = () => {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <h3 className="font-semibold text-foreground truncate">{currentTrack.title}</h3>
-              {externalSource === 'youtube' && (
-                <Badge variant="secondary" className="bg-red-500 text-white text-[10px] px-1.5">
-                  YouTube
-                </Badge>
-              )}
             </div>
             <p className="text-sm text-muted-foreground truncate">{currentTrack.artist}</p>
           </div>

@@ -10,7 +10,7 @@ interface KeyboardShortcutsProps {
   onTabChange: (tab: string) => void;
 }
 
-const TABS = ['player', 'equalizer', 'effects', 'youtube', 'settings'];
+const TABS = ['player', 'equalizer', 'effects', 'settings'];
 
 const SHORTCUTS: { keys: string; description: string }[] = [
   { keys: 'Space / K', description: 'Play or pause' },
@@ -21,7 +21,7 @@ const SHORTCUTS: { keys: string; description: string }[] = [
   { keys: 'S', description: 'Toggle shuffle' },
   { keys: 'R', description: 'Cycle repeat mode' },
   { keys: 'N / P', description: 'Next / previous track' },
-  { keys: '1 – 5', description: 'Switch tab' },
+  { keys: '1 – 4', description: 'Switch tab' },
   { keys: '?', description: 'Show or hide this help' },
 ];
 

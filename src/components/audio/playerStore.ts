@@ -4,16 +4,14 @@ export interface Track {
   id: string;
   title: string;
   artist: string;
+  /** Seconds. 0 until the file has been decoded. */
   duration: number;
   src: string | File;
   artwork?: string;
-  /** `youtube` tracks are played through the YouTube IFrame player instead of the Web Audio graph. */
-  source?: 'audio' | 'youtube';
 }
 
 export type PlayMode = 'normal' | 'vocal-enhance' | 'instrument-focus' | 'bass-boost';
 export type RepeatMode = 'none' | 'one' | 'all';
-export type ExternalSource = 'none' | 'youtube';
 
 export interface AudioPlayerState {
   currentTrack: Track | null;
@@ -28,16 +26,18 @@ export interface AudioPlayerState {
   mode: PlayMode;
   equalizerBands: number[];
   equalizerPreset: string;
+  /** Maximum band gain in dB (sliders run from -range to +range). */
+  equalizerRange: number;
+  /** Q of every band. Lower is wider. */
+  equalizerWidth: number;
   effects: AudioEffects;
   isShuffled: boolean;
   repeatMode: RepeatMode;
-  externalSource: ExternalSource;
   audioInfo: AudioEngineInfo | null;
 }
 
 export interface AudioPlayerActions {
   loadTrack: (track: Track) => Promise<void>;
-  loadYouTube: (url: string, meta?: Partial<Track>, containerId?: string) => Promise<void>;
   play: () => void;
   pause: () => void;
   stop: () => void;
@@ -48,6 +48,8 @@ export interface AudioPlayerActions {
   setMode: (mode: PlayMode) => void;
   setEqualizerBand: (index: number, gain: number) => void;
   setEqualizerPreset: (preset: string) => void;
+  setEqualizerRange: (range: number) => void;
+  setEqualizerWidth: (width: number) => void;
   updateEffects: (effects: Partial<AudioEffects>) => void;
   toggleShuffle: () => void;
   toggleRepeat: () => void;
@@ -64,11 +66,10 @@ export interface AudioPlayerActions {
 export type PlayerUpdater = AudioPlayerState | ((previous: AudioPlayerState) => AudioPlayerState);
 
 /**
- * A tiny external store.
+ * A small external store.
  *
- * The player updates the playback position ten times a second. Keeping the state in a plain
- * React context would re-render every consumer on every tick, so the state lives here and
- * components subscribe to the slice they actually use.
+ * Playback position updates ten times a second. Keeping that in a React context would re-render
+ * every consumer on each update, so components subscribe to the slice they use instead.
  */
 export class PlayerStore {
   private state: AudioPlayerState;
@@ -96,7 +97,7 @@ export class PlayerStore {
   };
 }
 
-/** Shallow equality for the small object/array slices that components select. */
+/** Shallow equality for the small object and array slices that components select. */
 export function shallowEqual<T>(a: T, b: T): boolean {
   if (Object.is(a, b)) return true;
   if (typeof a !== 'object' || a === null || typeof b !== 'object' || b === null) return false;

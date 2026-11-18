@@ -1,4 +1,5 @@
 import { AudioEffects } from '@/components/audio/AudioEngine';
+import { EQ_BAND_COUNT, EQ_RANGE_OPTIONS, clampQ } from '@/components/audio/equalizer';
 import { PlayMode, RepeatMode, Track } from '@/components/audio/playerStore';
 
 const STORAGE_KEY = 'sonic-studio-pro:preferences';
@@ -9,6 +10,8 @@ export interface PersistedPreferences {
   volume: number;
   equalizerBands: number[];
   equalizerPreset: string;
+  equalizerRange: number;
+  equalizerWidth: number;
   effects: AudioEffects;
   mode: PlayMode;
   isShuffled: boolean;
@@ -111,11 +114,19 @@ export function loadPreferences(): Partial<PersistedPreferences> | null {
       result.volume = clamp(parsed.volume, 0, 1);
     }
 
-    const bands = readNumberArray(parsed.equalizerBands, 10);
+    // A band array saved with a different band count (for example the old 10-band layout)
+    // does not fit the current layout, so it is dropped.
+    const bands = readNumberArray(parsed.equalizerBands, EQ_BAND_COUNT);
     if (bands) result.equalizerBands = bands;
 
     if (typeof parsed.equalizerPreset === 'string') {
       result.equalizerPreset = parsed.equalizerPreset;
+    }
+    if (typeof parsed.equalizerRange === 'number' && EQ_RANGE_OPTIONS.includes(parsed.equalizerRange as 6)) {
+      result.equalizerRange = parsed.equalizerRange;
+    }
+    if (typeof parsed.equalizerWidth === 'number' && Number.isFinite(parsed.equalizerWidth)) {
+      result.equalizerWidth = clampQ(parsed.equalizerWidth);
     }
 
     const effects = readEffects(parsed.effects);
@@ -153,6 +164,8 @@ export function savePreferences(preferences: Omit<PersistedPreferences, 'version
       volume: preferences.volume,
       equalizerBands: preferences.equalizerBands,
       equalizerPreset: preferences.equalizerPreset,
+      equalizerRange: preferences.equalizerRange,
+      equalizerWidth: preferences.equalizerWidth,
       effects: preferences.effects,
       mode: preferences.mode,
       isShuffled: preferences.isShuffled,

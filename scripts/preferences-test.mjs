@@ -52,8 +52,10 @@ const effects = {
 
 savePreferences({
   volume: 0.42,
-  equalizerBands: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+  equalizerBands: Array.from({ length: 31 }, (_, i) => i - 15),
   equalizerPreset: 'rock',
+  equalizerRange: 24,
+  equalizerWidth: 2.5,
   effects,
   mode: 'bass-boost',
   isShuffled: true,
@@ -63,7 +65,9 @@ savePreferences({
 
 const restored = loadPreferences();
 checks.push(['volume restored', restored?.volume === 0.42]);
-checks.push(['equalizer restored', restored?.equalizerBands?.[9] === 10]);
+checks.push(['equalizer restored', restored?.equalizerBands?.length === 31 && restored?.equalizerBands?.[30] === 15]);
+checks.push(['equalizer range restored', restored?.equalizerRange === 24]);
+checks.push(['equalizer width restored', restored?.equalizerWidth === 2.5]);
 checks.push(['preset restored', restored?.equalizerPreset === 'rock']);
 checks.push(['reverb restored', restored?.effects?.reverb?.roomSize === 0.4]);
 checks.push(['mode restored', restored?.mode === 'bass-boost']);
@@ -85,6 +89,21 @@ window.localStorage.setItem(
 const partial = loadPreferences();
 checks.push(['a bad volume falls back to the default', partial?.volume === undefined]);
 checks.push(['a wrong length band array is ignored', partial?.equalizerBands === undefined]);
+
+// The old 10-band layout is dropped, not stretched.
+window.localStorage.setItem(
+  'sonic-studio-pro:preferences',
+  JSON.stringify({ version: 1, equalizerBands: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] })
+);
+checks.push(['a saved 10-band array is ignored', loadPreferences()?.equalizerBands === undefined]);
+
+// Unsupported range and out-of-bounds width are rejected or clamped.
+window.localStorage.setItem(
+  'sonic-studio-pro:preferences',
+  JSON.stringify({ version: 1, equalizerRange: 50, equalizerWidth: 99 })
+);
+checks.push(['an unsupported range is ignored', loadPreferences()?.equalizerRange === undefined]);
+checks.push(['a width above the limit is clamped', loadPreferences()?.equalizerWidth === 8]);
 
 // 4. Out of range values are clamped.
 window.localStorage.setItem(

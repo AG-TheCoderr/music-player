@@ -25,19 +25,19 @@ function describeFailure(payload: unknown, status: number): string {
     return 'This source is not supported by the backend.';
   }
   if (status === 404) {
-    return 'The backend function was not found. It may not be deployed yet.';
+    return 'The backend function was not found.';
   }
   if (status === 401 || status === 403) {
-    return 'The backend rejected the request. Check the Supabase configuration.';
+    return 'The backend rejected the request.';
   }
   if (status >= 500) {
-    return 'The backend ran into an error. Please try again.';
+    return 'Backend error. Try again later.';
   }
   if (detail) {
     return detail;
   }
 
-  return 'The request failed. Please try again.';
+  return 'The request failed.';
 }
 
 /**

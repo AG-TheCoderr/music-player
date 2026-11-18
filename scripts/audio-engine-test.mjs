@@ -258,6 +258,20 @@ checks.push(['the reverb wet gain is ramped', (engine.reverbWet?.gain.ramped ?? 
 checks.push(['the chorus dry gain is ramped', (engine.chorusDry?.gain.ramped ?? 0) > 0]);
 checks.push(['EQ band applied', engine.equalizerNodes[0].gain.value === 6]);
 
+// 31 third-octave bands, 20 Hz to 20 kHz, with the default Q.
+checks.push(['31 equalizer bands are built', engine.equalizerNodes.length === 31]);
+checks.push(['bands start at 20 Hz and end at 20 kHz', engine.equalizerNodes[0].frequency.value === 20 && engine.equalizerNodes[30].frequency.value === 20000]);
+checks.push(['bands use the default Q', engine.equalizerNodes.every((node) => Math.abs(node.Q.value - 4.32) < 1e-9)]);
+// Gains are clamped to the engine limit of 24 dB.
+engine.setEqualizerBand(5, 40);
+checks.push(['band gain is clamped to 24 dB', engine.equalizerNodes[5].gain.value === 24]);
+engine.setEqualizerBand(5, 0);
+// Width (Q) reaches every band.
+engine.setEqualizerWidth(1.5);
+checks.push(['width sets Q on every band', engine.equalizerNodes.every((node) => node.Q.value === 1.5)]);
+checks.push(['width is ramped, not jumped', (engine.equalizerNodes[10]?.Q.ramped ?? 0) > 0]);
+engine.setEqualizerWidth(4.32);
+
 // The impulse response is generated on a short debounce.
 await new Promise((resolve) => setTimeout(resolve, 250));
 checks.push(['reverb impulse generated', engine.reverbConvolver?.buffer != null]);
