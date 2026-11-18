@@ -219,8 +219,22 @@ check('extraction calls the audio proxy', calls[0].url.endsWith('/functions/v1/a
 check('extraction sends the extract action', calls[0].init.body.includes('"action":"extract"'));
 check('extraction returns the stream url', extracted.streamUrl === 'https://cdn/track.mp3');
 
-calls = mockFetch([{ status: 200, body: { success: false } }]);
-check('a failed extraction returns null', (await AudioProxyService.extractAudioUrl('https://example.com/watch')) === null);
+calls = mockFetch([{ status: 200, body: { success: false, error: 'Extraction of this platform is not supported on Edge.' } }]);
+let refusedMessage = '';
+try {
+  await AudioProxyService.extractAudioUrl('https://soundcloud.com/artist/track');
+} catch (error) {
+  refusedMessage = error instanceof Error ? error.message : String(error);
+}
+check('a refused extraction surfaces the backend reason', /not supported/i.test(refusedMessage));
+calls = mockFetch([{ status: 200, body: { success: true } }]);
+let emptyMessage = '';
+try {
+  await AudioProxyService.extractAudioUrl('https://example.com/watch');
+} catch (error) {
+  emptyMessage = error instanceof Error ? error.message : String(error);
+}
+check('an extraction with no stream is an error, not a silent null', /no playable stream/i.test(emptyMessage));
 
 // 12. Non http urls are rejected before the network.
 calls = mockFetch([{ status: 200, body: { success: true } }]);
