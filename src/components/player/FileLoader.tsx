@@ -124,7 +124,7 @@ export const FileLoader: React.FC = () => {
   };
 
   return (
-    <Card className="p-6 bg-gradient-surface border-audio-control rainbow-border">
+    <Card className="p-6 panel">
       <div className="space-y-6">
         <div className="flex items-center space-x-2">
           <Music className="w-5 h-5 text-primary" />

@@ -203,7 +203,7 @@ export const KeyboardShortcuts: React.FC<KeyboardShortcutsProps> = ({ tab, onTab
           onClick={() => setShowHelp(false)}
         >
           <Card
-            className="w-full max-w-md p-6 bg-gradient-surface border-audio-control space-y-4"
+            className="w-full max-w-md p-6 panel space-y-4"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-center justify-between">

@@ -8,10 +8,10 @@ import { ModeSelector } from './player/ModeSelector';
 import { Visualizer } from './audio/Visualizer';
 import { MusicSearch } from './search/MusicSearch';
 import { KeyboardShortcuts } from './player/KeyboardShortcuts';
+import { SpectrumAmbient } from './player/SpectrumAmbient';
 import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Headphones, Settings, Upload, BarChart3, AlertTriangle, X } from 'lucide-react';
+import { Headphones, AlertTriangle, X } from 'lucide-react';
 import { EQ_BAND_FREQUENCIES } from './audio/equalizer';
 
 // Heavy panels are split out of the initial bundle.
@@ -22,7 +22,7 @@ const PlaylistPanel = lazy(() =>
 );
 
 const PanelFallback = () => (
-  <Card className="p-6 bg-gradient-surface border-audio-control">
+  <Card className="p-6 panel">
     <div className="h-32 animate-pulse rounded bg-audio-track" />
   </Card>
 );
@@ -92,36 +92,22 @@ const MusicPlayerContent: React.FC = () => {
   const isLoading = usePlayerSelector((state) => state.isLoading);
 
   return (
-    <div className="min-h-screen bg-background p-4 space-y-6">
+    <div className="grain relative isolate min-h-screen bg-background p-4 space-y-6">
+      <SpectrumAmbient />
+
       {/* Header */}
-      <div className="text-center space-y-2">
-        <div className="flex items-center justify-center space-x-3">
-          <div className="w-12 h-12 bg-gradient-primary rounded-full flex items-center justify-center animate-pulse-glow">
-            <Headphones className="w-6 h-6 text-white" />
+      <header className="text-center space-y-3 pt-6">
+        <div className="flex items-center justify-center gap-4">
+          <div className="w-12 h-12 rounded-full bg-gradient-primary flex items-center justify-center shadow-glow">
+            <Headphones className="w-6 h-6 text-background" />
           </div>
-          <h1 className="text-4xl font-bold bg-gradient-primary bg-clip-text text-transparent">
-            Sonic Studio Pro
-          </h1>
+          <h1 className="rgb-text text-4xl font-bold tracking-tight">Sonic Studio Pro</h1>
         </div>
         <div className="flex items-center justify-center gap-3">
-          <p className="text-muted-foreground">Player, equalizer and effects</p>
+          <p className="text-sm tracking-wide text-muted-foreground">Player, equalizer and effects</p>
           <KeyboardShortcuts tab={tab} onTabChange={setTab} />
         </div>
-        <div className="flex items-center justify-center space-x-2 flex-wrap">
-          <Badge variant="outline" className="bg-primary/10 border-primary/20">
-            <BarChart3 className="w-3 h-3 mr-1" />
-            Equalizer
-          </Badge>
-          <Badge variant="outline" className="bg-accent/10 border-accent/20">
-            <Settings className="w-3 h-3 mr-1" />
-            Effects
-          </Badge>
-          <Badge variant="outline" className="bg-primary-glow/10 border-primary-glow/20">
-            <Upload className="w-3 h-3 mr-1" />
-            Files and streams
-          </Badge>
-        </div>
-      </div>
+      </header>
 
       {/* Error banner */}
       {error && (
@@ -154,7 +140,7 @@ const MusicPlayerContent: React.FC = () => {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="player" className="space-y-6">
+          <TabsContent value="player" className="space-y-6 tab-enter">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Left Column */}
               <div className="space-y-6">
@@ -168,7 +154,7 @@ const MusicPlayerContent: React.FC = () => {
                 <PlayerControls />
 
                 {/* Visualizer */}
-                <Card className="p-6 bg-gradient-surface border-audio-control rainbow-border">
+                <Card className="p-6 panel">
                   <div className="space-y-4">
                     <h3 className="text-lg font-semibold text-foreground">Audio Visualizer</h3>
                     <div className="h-32 bg-audio-track rounded-lg overflow-hidden">
@@ -189,7 +175,7 @@ const MusicPlayerContent: React.FC = () => {
               {/* Right Column */}
               <div className="space-y-6">
                 {/* Quick EQ */}
-                <Card className="p-4 bg-gradient-surface border-audio-control rainbow-border">
+                <Card className="p-4 panel">
                   <h4 className="text-sm font-semibold text-foreground mb-3">Quick EQ</h4>
                   <div className="flex justify-between items-end h-16">
                     {QUICK_EQ_BANDS.map(({ frequency, label }) => {
@@ -197,7 +183,7 @@ const MusicPlayerContent: React.FC = () => {
                       const height = Math.max(5, ((gain + equalizerRange) / (2 * equalizerRange)) * 100);
                       return (
                         <div key={frequency} className="flex-1 mx-1">
-                          <div className="bg-audio-track rounded h-full relative overflow-hidden">
+                          <div className="bg-audio-track rounded h-12 relative overflow-hidden">
                             <div
                               className="bg-gradient-primary w-full absolute bottom-0 transition-all duration-300"
                               style={{ height: `${height}%` }}
@@ -211,7 +197,7 @@ const MusicPlayerContent: React.FC = () => {
                 </Card>
 
                 {/* Track Info - reflects the real loaded track */}
-                <Card className="p-4 bg-gradient-surface border-audio-control rainbow-border">
+                <Card className="p-4 panel">
                   <h4 className="text-sm font-semibold text-foreground mb-3">Track Info</h4>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between gap-4">
@@ -254,26 +240,26 @@ const MusicPlayerContent: React.FC = () => {
             </div>
           </TabsContent>
 
-          <TabsContent value="equalizer">
-            <div className="rainbow-border p-6 bg-gradient-surface border-audio-control rounded-lg">
+          <TabsContent value="equalizer" className="tab-enter">
+            <div className="p-6 panel rounded-lg">
               <Suspense fallback={<PanelFallback />}>
                 <Equalizer />
               </Suspense>
             </div>
           </TabsContent>
 
-          <TabsContent value="effects">
-            <div className="rainbow-border p-6 bg-gradient-surface border-audio-control rounded-lg">
+          <TabsContent value="effects" className="tab-enter">
+            <div className="p-6 panel rounded-lg">
               <Suspense fallback={<PanelFallback />}>
                 <EffectsPanel />
               </Suspense>
             </div>
           </TabsContent>
 
-          <TabsContent value="settings" className="space-y-6">
+          <TabsContent value="settings" className="space-y-6 tab-enter">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <ModeSelector />
-              <Card className="p-6 bg-gradient-surface border-audio-control rainbow-border">
+              <Card className="p-6 panel">
                 <h3 className="text-lg font-semibold text-foreground mb-4">Output</h3>
                 <div className="space-y-4 text-sm">
                   <div className="flex justify-between items-center">
