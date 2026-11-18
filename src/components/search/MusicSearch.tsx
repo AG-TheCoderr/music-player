@@ -348,7 +348,7 @@ export const MusicSearch: React.FC = () => {
             {previewCount > 0 && (
               <p className="text-xs text-muted-foreground flex items-start gap-1.5">
                 <Clock className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                {previewCount} of these are 30-90 second preview clips. Search YouTube for full tracks.
+                {previewCount} results are 30-90 second previews. YouTube has full tracks.
               </p>
             )}
 

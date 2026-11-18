@@ -62,7 +62,7 @@ export const FileLoader: React.FC = () => {
     if (audioFiles.length === 0) {
       toast({
         title: 'Invalid file type',
-        description: 'Please select audio files only.',
+        description: 'Select audio files only.',
         variant: 'destructive',
       });
       return;
@@ -103,7 +103,7 @@ export const FileLoader: React.FC = () => {
       // YouTube links are played through the YouTube player, not the audio engine.
       if (YouTubeController.isYouTubeUrl(url)) {
         await loadYouTube(url);
-        toast({ title: 'YouTube video loaded', description: 'Open the YouTube tab to watch and control it.' });
+        toast({ title: 'YouTube video loaded', description: 'Open the YouTube tab to play it.' });
         setUrlInput('');
         return;
       }
@@ -134,7 +134,7 @@ export const FileLoader: React.FC = () => {
         toast({ title: 'Audio extracted', description: `Successfully extracted audio from ${new URL(url).hostname}` });
       } else {
         track = createTrackFromUrl(url);
-        toast({ title: 'URL loaded', description: 'Audio track added to the playlist.' });
+        toast({ title: 'URL loaded', description: 'Added to the playlist.' });
       }
 
       addToPlaylist(track);
@@ -253,14 +253,14 @@ export const FileLoader: React.FC = () => {
             onClick={() => {
               addToPlaylist({
                 id: `demo-${Date.now()}`,
-                title: 'Demo Track - Ambient Soundscape',
+                title: 'Demo track',
                 artist: 'Sonic Studio Pro',
                 duration: 0,
                 src: publicUrl('audio/demo.mp3'),
                 artwork: publicUrl('placeholder.svg'),
                 source: 'audio',
               });
-              toast({ title: 'Demo track added', description: 'The demo track is now in your playlist.' });
+              toast({ title: 'Demo track added', description: 'Added to the playlist.' });
             }}
             className="bg-audio-control border-border hover:bg-audio-active"
           >
