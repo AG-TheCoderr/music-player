@@ -295,7 +295,7 @@ export const YouTubePane: React.FC = () => {
         )}
 
         <p className="text-xs text-muted-foreground">
-          YouTube streams play through the YouTube player and bypass the in-app equalizer, effects and visualiser.
+          YouTube audio bypasses the equalizer, effects and visualiser.
         </p>
       </div>
     </Card>

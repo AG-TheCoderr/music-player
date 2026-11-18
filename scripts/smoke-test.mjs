@@ -82,7 +82,7 @@ const modeBadge = Array.from(doc.querySelectorAll('div')).find(
 
 // 4. add the demo track to the playlist
 await clickText('button', 'Demo Track');
-const playlistHasTrack = (doc.body.textContent || '').includes('Demo Track - Ambient Soundscape');
+const playlistHasTrack = (doc.body.textContent || '').includes('Demo track');
 const playlistCount = (doc.body.textContent || '').match(/Up Next\s*\((\d+)\)/)?.[1];
 
 // 5. transport controls exist and are labelled
@@ -136,7 +136,7 @@ const checks = [
   ['load panel', body.includes('Load Music')],
   ['mode panel', body.includes('Audio Mode')],
   ['playlist panel', body.includes('Up Next')],
-  ['empty playlist hint (initially)', initialBody.includes('Playlist is empty')],
+  ['empty playlist hint (initially)', initialBody.includes('No tracks yet')],
   ['visualiser present', body.includes('Audio Visualizer')],
   ['track info present', body.includes('Track Info')],
   ['no hardcoded fake format', !body.includes('MP3 320kbps')],

@@ -177,8 +177,8 @@ export const PlaylistPanel = () => {
         {playlist.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full py-8 text-center">
             <ListMusic className="h-8 w-8 text-muted-foreground/60 mb-2" />
-            <p className="text-muted-foreground text-sm">Playlist is empty</p>
-            <p className="text-xs text-muted-foreground/70 mt-1">Search or drop a file to add tracks</p>
+            <p className="text-muted-foreground text-sm">No tracks yet</p>
+            <p className="text-xs text-muted-foreground/70 mt-1">Search, paste a link or drop files</p>
           </div>
         ) : (
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>

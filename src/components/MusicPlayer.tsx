@@ -90,7 +90,7 @@ const MusicPlayerContent: React.FC = () => {
           </h1>
         </div>
         <div className="flex items-center justify-center gap-3">
-          <p className="text-muted-foreground">Professional music player with advanced audio processing</p>
+          <p className="text-muted-foreground">Music player with equalizer and effects</p>
           <KeyboardShortcuts tab={tab} onTabChange={setTab} />
         </div>
         <div className="flex items-center justify-center space-x-2 flex-wrap">
@@ -163,7 +163,7 @@ const MusicPlayerContent: React.FC = () => {
                     {externalSource === 'youtube' ? (
                       <div className="h-32 bg-audio-track rounded-lg overflow-hidden flex items-center justify-center">
                         <p className="text-sm text-muted-foreground px-4 text-center">
-                          The visualiser reads the Web Audio graph, which YouTube playback bypasses.
+                          Not available for YouTube playback.
                         </p>
                       </div>
                     ) : (
@@ -228,10 +228,6 @@ const MusicPlayerContent: React.FC = () => {
                       <span className="text-foreground">
                         {audioInfo ? `${(audioInfo.sampleRate / 1000).toFixed(1)} kHz` : '--'}
                       </span>
-                    </div>
-                    <div className="flex justify-between gap-4">
-                      <span className="text-muted-foreground">Engine Precision:</span>
-                      <span className="text-foreground">32-bit float</span>
                     </div>
                     <div className="flex justify-between gap-4">
                       <span className="text-muted-foreground">Channels:</span>
@@ -301,16 +297,10 @@ const MusicPlayerContent: React.FC = () => {
                   <div className="flex justify-between items-center">
                     <span className="text-muted-foreground">Output Latency:</span>
                     <span className="text-foreground">
-                      {audioInfo ? `${(audioInfo.outputLatency * 1000).toFixed(1)} ms` : '--'}
+                      {audioInfo && audioInfo.outputLatency > 0
+                        ? `${(audioInfo.outputLatency * 1000).toFixed(1)} ms`
+                        : 'Not reported'}
                     </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-muted-foreground">Audio Engine:</span>
-                    <span className="text-foreground">Web Audio API</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-muted-foreground">Processing:</span>
-                    <span className="text-primary">Real-time</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-muted-foreground">Context State:</span>
